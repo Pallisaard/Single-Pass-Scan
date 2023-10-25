@@ -3,6 +3,7 @@
 #include <string.h>
 #include <math.h>
 #include "hostSkel.cu.h"
+#include "sps.cu.h"
 
 // R seems to be max value of the elements of the array
 void initArray(int32_t* inp_arr, const uint32_t N, const int R) {
@@ -47,7 +48,73 @@ int bandwidthMemcpy( const uint32_t B     // desired CUDA block size ( <= 1024, 
     gpuAssert( cudaPeekAtLastError() );
     return 0;
 }
+singlePassScan( const uint32_t     B     // desired CUDA block size ( <= 1024, multiple of 32)
+            , const size_t       N     // length of the input array
+            , const size_t      Q   // the number of elements each thread handles.
+            , int32_t* h_in            // host input    of size: N * sizeof(int)
+            , int32_t* d_in            // device input  of size: N * sizeof(ElTp)
+            , int32_t* d_out           // device result of size: N * sizeof(int)
+            ){
+    int* h_out = (int*)malloc(mem_size);
+    uint32_t num_blocks = (N+B*Q-1)/(B*Q)
+    int32_t* IDAddr;
+    uint32_t* flagArr;
+    int32_t* aggrArr;
+    int32_t* prefixArr;
+    cudaMalloc((void**)&IDAddr, sizeof(int32_t));
+    cudaMemset(IDAddr, -1, sizeof(int32_t));
+    cudaMalloc((void**)&flagArr, sizeof(uint32_t));
+    cudaMemset(flagArr, X, sizeof(uint32_t));
+    cudaMalloc((void**)&aggrArr, sizeof(int32_t));
+    cudaMemset(aggrArr, 0, sizeof(int32_t));
+    cudaMalloc((void**)&prefixArr, sizeof(uint32_t));
+    cudaMemset(prefixArr, 0, sizeof(uint32_t));
 
+    unsigned long int elapsed;
+    struct timeval t_start, t_end, t_diff;
+    // Need to reset the dynID and flag arr each time we call the kernel
+    // Before we can start to run it multiple times and get a benchmark.
+    singelePassScanKernel1<B, Q><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, num_blocks);
+    cudaDeviceSynchronize();
+    gpuAssert( cudaPeekAtLastError() );
+    // For now we run it once on GPU and test that it is valid.
+    // The CPU we might as well just add the benchmark
+    { // sequential computation
+        gettimeofday(&t_start, NULL);
+        for(int i=0; i<RUNS_CPU; i++) {
+            int acc = 0;
+            for(uint32_t i=0; i<N; i++) {
+                acc += h_in[i];
+                h_ref[i] = acc;
+            }
+        }
+        gettimeofday(&t_end, NULL);
+        timeval_subtract(&t_diff, &t_end, &t_start);
+        elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_CPU;
+        double gigaBytesPerSec = N * (sizeof(int) + sizeof(int)) * 1.0e-3f / elapsed;
+        printf("Scan Inclusive AddI32 CPU Sequential runs in: %lu microsecs, GB/sec: %.2f\n"
+              , elapsed, gigaBytesPerSec);
+    }
+
+    { // Validation
+        cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+        for(uint32_t i = 0; i<N; i++) {
+            if(h_out[i] != h_ref[i]) {
+                printf("!!!INVALID!!!: Scan Inclusive AddI32 at index %d, dev-val: %d, host-val: %d\n"
+                      , i, h_out[i], h_ref[i]);
+                exit(1);
+            }
+        }
+        printf("Scan Inclusive AddI32: VALID result!\n\n");
+    }
+    free(h_out);
+    cudaFree(IDAddr);
+    cudaFree(flagArr);
+    cudaFree(aggrArr);
+    cudaFree(prefixArr);
+    
+    return 0;
+}
 
 int scanIncAddI32( const uint32_t B     // desired CUDA block size ( <= 1024, multiple of 32)
                  , const size_t   N     // length of the input array
@@ -122,8 +189,8 @@ int scanIncAddI32( const uint32_t B     // desired CUDA block size ( <= 1024, mu
 
 
 int main (int argc, char * argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s <array-length> <block-size>\n", argv[0]);
+    if (argc != 4) {
+        printf("Usage: %s <array-length> <block-size> <Q-size>\n", argv[0]);
         exit(1);
     }
 
@@ -131,6 +198,7 @@ int main (int argc, char * argv[]) {
 
     const uint32_t N = atoi(argv[1]);
     const uint32_t B = atoi(argv[2]);
+    const uint32_t Q = atoi(argv[3]);
 
     printf("Testing parallel basic blocks for input length: %d and CUDA-block size: %d\n\n\n", N, B);
 
@@ -149,6 +217,10 @@ int main (int argc, char * argv[]) {
 
     { // inclusive scan with int addition
         scanIncAddI32   (B, N, h_in, d_in, d_out);
+    }
+
+    {
+        singlePassScan(B, N, Q, h_in, d_in, d_out)
     }
 
 

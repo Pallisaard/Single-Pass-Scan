@@ -28,6 +28,8 @@ void log2UB(uint32_t n, uint32_t* ub, uint32_t* lg) {
     *lg = r;
 }
 
+
+
 /**
  * `N` is the input-array length
  * `B` is the CUDA block size

@@ -240,15 +240,15 @@ __device__ inline int getDynID(int* IDAddr){
 
 
 template <int B, int Q>
-__global__ void SinglePassScanKernel(int32_t* d_in, int32_t* d_out, uint32_t N, uint32_t* IDAddr,
+__global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out, uint32_t N, int32_t* IDAddr,
                  uint32_t* flagArr, int32_t* aggrArr, int32_t* prefixArr, uint32_t numBlocks){
 
     // Step 1 get a dynamic id
-    uint32_t dynID = getDynID(IDAddr);
+    int32_t dynID = getDynID(IDAddr);
 
     // If the first dynamic id, of -1 then we are the prefix block instead.
     // an optimisation might be to let id 0 do it, but it still calculates the first block.
-    if (dynID == -1){
+    if (dynID < 0){
         uint32_t counter = 0;
         int32_t prefix = 0;
         while (counter <= numBlocks){
