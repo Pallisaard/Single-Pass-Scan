@@ -5,6 +5,10 @@
 
 #include "constants.cu.h"
 
+#define X 0
+#define A 1
+#define P 2
+
 // template <int B, int Q>
 // __device__ inline void threadReduce(int32_t *shd_mem, uint32_t idx) {
 //     unsigned int tid = threadIdx.x;
@@ -133,3 +137,150 @@ __device__ inline void blockLevelScan(int32_t *aux_mem, int32_t *flag_mem,
 }
 
 #endif /* SPS_CU_H */
+
+/**
+ * Naive memcpy kernel, for the purpose of comparing with
+ * a more "realistic" bandwidth number.
+ */
+__global__ void naiveMemcpy(int* d_out, int* d_inp, const uint32_t N)
+{
+	uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
+	if (gid < N) {
+		d_out[gid] = d_inp[gid];
+	}
+}
+
+
+/**
+ * Helper function that copies `Q` input elements per thread from
+ *   global to shared memory, in a way that optimizes spatial locality,
+ *
+ * `glb_offs` is the offset in global-memory array `d_inp`
+ *    from where elements should be read.
+ * `d_inp` is the input array stored in global memory
+ * `N` is the length of `d_inp`
+ * `ne` is the neutral element of `T` (think zero). In case
+ *    the index of the element to be read by the current thread
+ *    is out of range, then place `ne` in shared memory instead.
+ * `shmem_inp` is the shared memory. It has size
+ *     `blockDim.x*CHUNK*sizeof(T)`, where `blockDim.x` is the
+ *     size of the CUDA block. `shmem_inp` should be filled from
+ *     index `0` to index `blockDim.x*CHUNK - 1`.
+ *
+ * As such, a CUDA-block B of threads executing this function would
+ *   read `Q*B` elements from global memory and store them to
+ *   (fast) shared memory, in the same order in which they appear
+ *   in global memory, but making sure that consecutive threads
+ *   read consecutive elements of `d_inp` in a SIMD instruction.
+ **/
+template <class T, uint32_t Q>
+__device__ inline void
+copyFromGlb2ShrMem(const uint32_t glb_offs, const uint32_t N, const T& ne, T* d_inp, volatile T* shmem_inp)
+{
+#pragma unroll
+	for (uint32_t i = 0; i < Q; i++) {
+		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
+		uint32_t glb_ind = glb_offs + loc_ind;
+		T elm = ne;
+		if (glb_ind < N) {
+			elm = d_inp[glb_ind];
+		}
+		shmem_inp[loc_ind] = elm;
+	}
+	__syncthreads();	// leave this here at the end!
+}
+
+/**
+ * This is very similar with `copyFromGlb2ShrMem` except
+ * that you need to copy from shared to global memory, so
+ * that consecutive threads write consecutive indices in
+ * global memory in the same SIMD instruction.
+ * `glb_offs` is the offset in global-memory array `d_out`
+ *    where elements should be written.
+ * `d_out` is the global-memory array
+ * `N` is the length of `d_out`
+ * `shmem_red` is the shared-memory of size
+ *    `blockDim.x*Q*sizeof(T)`
+ */
+template <class T, uint32_t Q>
+__device__ inline void
+copyFromShr2GlbMem(const uint32_t glb_offs, const uint32_t N, T* d_out, volatile T* shmem_red)
+{
+#pragma unroll
+	for (uint32_t i = 0; i < Q; i++) {
+		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
+		uint32_t glb_ind = glb_offs + loc_ind;
+		if (glb_ind < N) {
+			T elm = const_cast<const T&>(shmem_red[loc_ind]);
+			d_out[glb_ind] = elm;
+		}
+	}
+	__syncthreads();	// leave this here at the end!
+}
+
+__device__ inline int getDynID(int* IDAddr){
+	return AtomicAdd(IDAddr,1);
+}
+
+
+template <int B, int Q>
+__global__ void SinglePassScanKernel(int32_t* d_in, uint32_t N, uint32_t* IDAddr,
+                 uint32_t* flagArr, uint32_t* aggrArr, uint32_t* prefixArr, uint32_t numBlocks){
+
+    // Step 1 get a dynamic id
+    dynID = getDynID(IDAddr);
+    // Step 1.5 calculate some id's and stuff we will use
+    globaloffSet = dynID*B*Q;
+    // Step 2 copy the memory the block will scan into shared memory.
+    __shared__ int32_t blockShrMem[B*Q];
+    copyFromGlb2ShrMem<uint32_t, Q>(globaloffset, N, 0, blockShrMem);
+
+    // Step 3 Do the scan on the block
+    // First scan each thread
+    Thread_scan<B,Q>(blockShrMem);
+    // Do the scan on the block level
+    int32_t res = blockScan<B,Q>(blockShrMem, threadIdx.x);
+    // Save the result in shrmem.
+    blockShrMem[threadIdx.x] = res;
+
+    // Step 4 Update aggregate array
+    if (threadIdx.x == B-1){
+        aggrArr[dynID] = res
+        __threadfence()
+        flagArr[dynID] = A
+    }
+
+    // Let block 0 calculate 
+
+    // Step 5 calculate prefixArr value, might block or wait.
+
+    // Step 6 Update prefix array
+
+    // Step 7 Sum the prefix into the scan
+
+    // Step 8 Copy the result into global memory
+
+    // Step 9 Die!
+}
+
+    /*** Steps for the kernel in general and for other Kernel ***/
+
+    // Step 0 calculate some id's and stuff we will use
+
+    // Step 1 get a dynamic id
+
+    // Step 2 copy the memory the block will scan into shared memory.
+
+    // Step 3 Do the scan on the block
+
+    // Step 4 Update aggregate array
+
+    // Step 5 calculate prefixArr value, might block or wait.
+
+    // Step 6 Update prefix array
+
+    // Step 7 Sum the prefix into the scan
+
+    // Step 8 Copy the result into global memory
+
+    // Step 9 Die!
