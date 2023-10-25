@@ -40,12 +40,21 @@ __device__ inline void threadScan(int32_t *shd_mem, int32_t *shd_buf) {
 template <int B, int Q>
 __device__ inline void threadAdd(int32_t *shd_mem, int32_t *shd_buf) {
     unsigned int tid = threadIdx.x;
-#pragma unroll
     if (tid != 0) {
         int32_t tmp = shd_buf[tid - 1];
+        #pragma unroll
         for (int = 0; i < Q; i++) {
             shd_mem[i * B + tid] = shd_mem[i * B + tid] + tmp;
         }
+    }
+}
+
+template <int B, int Q>
+__device__ inline void threadAddVal(int32_t *shd_mem, int32_t val) {
+    unsigned int tid = threadIdx.x;
+    #pragma unroll
+    for (int = 0; i < Q; i++) {
+        shd_mem[i * B + tid] = shd_mem[i * B + tid] + val;
     }
 }
 
@@ -231,42 +240,72 @@ __device__ inline int getDynID(int* IDAddr){
 
 
 template <int B, int Q>
-__global__ void SinglePassScanKernel(int32_t* d_in, uint32_t N, uint32_t* IDAddr,
-                 uint32_t* flagArr, uint32_t* aggrArr, uint32_t* prefixArr, uint32_t numBlocks){
+__global__ void SinglePassScanKernel(int32_t* d_in, int32_t* d_out, uint32_t N, uint32_t* IDAddr,
+                 uint32_t* flagArr, int32_t* aggrArr, int32_t* prefixArr, uint32_t numBlocks){
 
     // Step 1 get a dynamic id
-    dynID = getDynID(IDAddr);
-    // Step 1.5 calculate some id's and stuff we will use
-    globaloffSet = dynID*B*Q;
-    // Step 2 copy the memory the block will scan into shared memory.
-    __shared__ int32_t blockShrMem[B*Q];
-    copyFromGlb2ShrMem<uint32_t, Q>(globaloffset, N, 0, blockShrMem);
+    uint32_t dynID = getDynID(IDAddr);
 
-    // Step 3 Do the scan on the block
-    // First scan each thread
-    Thread_scan<B,Q>(blockShrMem);
-    // Do the scan on the block level
-    int32_t res = blockScan<B,Q>(blockShrMem, threadIdx.x);
-    // Save the result in shrmem.
-    blockShrMem[threadIdx.x] = res;
-
-    // Step 4 Update aggregate array
-    if (threadIdx.x == B-1){
-        aggrArr[dynID] = res
-        __threadfence()
-        flagArr[dynID] = A
+    // If the first dynamic id, of -1 then we are the prefix block instead.
+    // an optimisation might be to let id 0 do it, but it still calculates the first block.
+    if (dynID == -1){
+        uint32_t counter = 0;
+        int32_t prefix = 0;
+        while (counter <= numBlocks){
+            while (flagArr[counter] == X)
+                ;
+            // Flag should be A 
+            int32_t tmp = aggrArr[counter];
+            prefix += tmp;
+            aggrArr[counter] = prefix;
+            __threadfence();
+            flagArr[counter] = P;
+        }
     }
+    else{ // dynID >= 0
 
-    // Let block 0 calculate 
+        // Step 1.5 calculate some id's and stuff we will use
+        globaloffSet = dynID*B*Q;
+        // Step 2 copy the memory the block will scan into shared memory.
+        __shared__ int32_t blockShrMem[B*Q];
+        copyFromGlb2ShrMem<uint32_t, Q>(globaloffset, N, 0, d_in, blockShrMem);
 
-    // Step 5 calculate prefixArr value, might block or wait.
+        // Step 3 Do the scan on the block
+        // First scan each thread
+        Thread_scan<B,Q>(blockShrMem);
+        // Do the scan on the block level
+        int32_t res = blockScan<B,Q>(blockShrMem, threadIdx.x);
+        // Save the result in shrmem.
+        blockShrMem[threadIdx.x] = res;
 
-    // Step 6 Update prefix array
+        // Step 4 Update aggregate array
+        if (threadIdx.x == B-1){
+            aggrArr[dynID] = res;
+            __threadfence();
+            flagArr[dynID] = A;
+        }
 
-    // Step 7 Sum the prefix into the scan
+        // Let block 0 calculate the prefix, we wait for it.
 
-    // Step 8 Copy the result into global memory
+        while (flagArr[dynID] != P)
+            ;
 
+        // Step 5 calculate prefixArr value, might block or wait.
+
+        // Step 6 Update prefix array
+
+        // Get the prefix value as it is ready.
+        int32_t prefix = aggrArr[dynID];
+
+        // Step 7 Sum the prefix into the scan
+
+        threadAddVal<B,Q>(blockShrMem, prefix);
+
+        // Step 8 Copy the result into global memory
+
+        copyFromShr2GlbMem<uint32_t, Q>(globaloffset, N, d_out, blockShreMem)
+
+    }
     // Step 9 Die!
 }
 
