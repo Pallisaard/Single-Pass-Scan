@@ -25,7 +25,7 @@
 // shd_mem is a pointer to an array in shared memory. It has size Q * B.
 // idx is the id of the part of the shared memory we start scanning.
 template <int B, int Q>
-__device__ inline void threadScan(int32_t *shd_mem) {
+__device__ inline void threadScan(int32_t *shd_mem, int32_t *shd_buf) {
     unsigned int tid = threadIdx.x;
     int acc = 0;
 #pragma unroll
@@ -34,6 +34,7 @@ __device__ inline void threadScan(int32_t *shd_mem) {
         acc = acc + tmp;
         shd_mem[i * B + tid] = acc;
     }
+    shd_buf[tid] = acc;
 }
 
 template <int B, int Q>
@@ -80,7 +81,7 @@ __device__ inline int32_t warpScan(volatile int32_t *shd_buf, uint32_t idx,
 // Each thread copy the final value of the scan to the shd_buf. Then
 // we perform a parallel scan across the shd_buf like in assignment 2.
 template <int B, int Q>
-__device__ inline int32_t blockScan(volatile int32_t *shd_buf, uint32_t idx) {
+__device__ inline void blockScan(volatile int32_t *shd_buf, uint32_t idx) {
     uint32_t lane = idx & (WARP - 1);
     uint32_t warpid = idx >> lgWARP;
 
@@ -100,13 +101,19 @@ __device__ inline int32_t blockScan(volatile int32_t *shd_buf, uint32_t idx) {
         warpScan(shd_buf, idx);
     }
 
+    __syncthreads();
+
     // accumulate the results from the previous step
     if (warpid > 0) {
         int32_t tmp = shd_buf[warpid - 1];
         warp_res = warp_res + tmp;
     }
 
-    return warp_res;
+    __syncthreads();
+
+    if (warpid = 0) {
+        shd_buf[idx] = warp_res;
+    }
 }
 
 // aux_mem is an index to an array of global memory.
