@@ -450,13 +450,8 @@ redCommuKernel(typename OP::RedElTp* d_tmp, typename OP::InpElTp* d_in, uint32_t
 }
 
 /**
- * Helper function that copies `CHUNK` input elements per thread from
+ * Helper function that copies `Q` input elements per thread from
  *   global to shared memory, in a way that optimizes spatial locality,
- *   i.e., (32) consecutive threads read/write consecutive input elements
- *   from/to global memory in the same SIMD instruction.
- *   This leads to "coalesced" access in the case when the element size
- *   is a word (or less). Coalesced access means that (groups of 32)
- *   consecutive threads access consecutive memory words.
  *
  * `glb_offs` is the offset in global-memory array `d_inp`
  *    from where elements should be read.
@@ -471,44 +466,18 @@ redCommuKernel(typename OP::RedElTp* d_tmp, typename OP::InpElTp* d_in, uint32_t
  *     index `0` to index `blockDim.x*CHUNK - 1`.
  *
  * As such, a CUDA-block B of threads executing this function would
- *   read `CHUNK*B` elements from global memory and store them to
+ *   read `Q*B` elements from global memory and store them to
  *   (fast) shared memory, in the same order in which they appear
  *   in global memory, but making sure that consecutive threads
  *   read consecutive elements of `d_inp` in a SIMD instruction.
- *
- ********************************
- * Weekly Assignment 2, Task 1: *
- ********************************
- * The current implementations of functions `copyFromGlb2ShrMem`
- *   and `copyFromShr2GlbMem` are broken because they feature
- *   (very) uncoalesced access to global memory arrays `d_inp`
- *   and `d_out` (see above). For example, `d_inp[glb_ind]`
- *   can be expanded to `d_inp[glb_offs + threadIdx.x*CHUNK + i]`,
- *   where `threadIdx.x` denotes the local thread-id in the
- *   current block. Assuming `T` is 32-bit int, it follows that
- *   two consecutive threads are going to access in the same SIMD
- *   instruction memory locations that are CHUNK words appart
- *   (`i` being the same for both threads since they execute in
- *   lockstep).
- *  Your task is to rewrite in both functions the line
- *      `uint32_t loc_ind = threadIdx.x*CHUNK + i;`
- *    such that the result is the same---i.e., the same elements
- *    are ultimately placed at the same position---but with the
- *    new formula for computing `loc_ind`, two consecutive threads
- *    will access consecutive memory words in the same SIMD instruction.
- */
-template <class T, uint32_t CHUNK>
+ **/
+template <class T, uint32_t Q>
 __device__ inline void
 copyFromGlb2ShrMem(const uint32_t glb_offs, const uint32_t N, const T& ne, T* d_inp, volatile T* shmem_inp)
 {
 #pragma unroll
-	for (uint32_t i = 0; i < CHUNK; i++) {
-// we flip the two terms so now consecutive threads access consecutive memory.
-#if OPTIMIZATION_2
+	for (uint32_t i = 0; i < Q; i++) {
 		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
-#else
-		uint32_t loc_ind = threadIdx.x * CHUNK + i;
-#endif
 		uint32_t glb_ind = glb_offs + loc_ind;
 		T elm = ne;
 		if (glb_ind < N) {
@@ -529,19 +498,15 @@ copyFromGlb2ShrMem(const uint32_t glb_offs, const uint32_t N, const T& ne, T* d_
  * `d_out` is the global-memory array
  * `N` is the length of `d_out`
  * `shmem_red` is the shared-memory of size
- *    `blockDim.x*CHUNK*sizeof(T)`
+ *    `blockDim.x*Q*sizeof(T)`
  */
-template <class T, uint32_t CHUNK>
+template <class T, uint32_t Q>
 __device__ inline void
 copyFromShr2GlbMem(const uint32_t glb_offs, const uint32_t N, T* d_out, volatile T* shmem_red)
 {
 #pragma unroll
-	for (uint32_t i = 0; i < CHUNK; i++) {
-#if OPTIMIZATION_2
+	for (uint32_t i = 0; i < Q; i++) {
 		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
-#else
-		uint32_t loc_ind = threadIdx.x * CHUNK + i;
-#endif
 		uint32_t glb_ind = glb_offs + loc_ind;
 		if (glb_ind < N) {
 			T elm = const_cast<const T&>(shmem_red[loc_ind]);
@@ -549,6 +514,10 @@ copyFromShr2GlbMem(const uint32_t glb_offs, const uint32_t N, T* d_out, volatile
 		}
 	}
 	__syncthreads();	// leave this here at the end!
+}
+
+__device__ inline int getDynID(int* IDAddr){
+	return AtomicAdd(IDAddr,1);
 }
 
 /**
