@@ -33,15 +33,14 @@ __device__ inline void threadScan(int32_t *shd_mem) {
 }
 
 template <int B, int Q>
-__device__ inline void threadAdd(int32_t *shd_mem, int32_t *aux_mem,
-                                 uint32_t aux_size, uint32_t aux_idx) {
+__device__ inline void threadAdd(int32_t *shd_mem, int32_t *shd_buf) {
     unsigned int tid = threadIdx.x;
 #pragma unroll
-    for (int = 0; i < Q; i++) {
-        int tmp = shd_mem[i * B + tid];
-        tmp = tmp + aux_mem[aux_idx];
-        shd_mem[i * B + tid] = tmp;
-        // shd_mem[i * B + tid] = shd_mem[i * B + tid] + aux_me[aux_idx];
+    if (tid != 0) {
+        int32_t tmp = shd_buf[tid - 1];
+        for (int = 0; i < Q; i++) {
+            shd_mem[i * B + tid] = shd_mem[i * B + tid] + tmp;
+        }
     }
 }
 
