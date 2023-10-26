@@ -152,13 +152,12 @@ __device__ inline void blockLevelScan(int32_t* aux_mem, int32_t* flag_mem,
 }
 
 // device function for a lookback scan method.
-template <int Q>
-__device inline void lookbackScan(int32_t* agg_mem, int32_t* pref_mem,
+__device__ inline void lookbackScan(int32_t* agg_mem, int32_t* pref_mem,
                                   int32_t* flag_mem, uint32_t dyn_idx,
                                   int32_t* shd_buf) {
     uint32_t tid = threadIdx.x;
     uint32_t B = blockDim.x;
-    agg_val = shd_buf[dyn_idx];
+    int32_t agg_val = shd_buf[dyn_idx];
 
     if (tid == 0 && dyn_idx == 0) {
         agg_mem[dyn_idx] = agg_val;
