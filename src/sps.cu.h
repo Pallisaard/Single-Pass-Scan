@@ -24,12 +24,13 @@
 
 // shd_mem is a pointer to an array in shared memory. It has size Q * B.
 // idx is the id of the part of the shared memory we start scanning.
-template <int B, int Q>
+template <uint32_t Q>
 __device__ inline void threadScan(int32_t *shd_mem, int32_t *shd_buf) {
+    uint32_t B = blockDim.x;
     unsigned int tid = threadIdx.x;
     int acc = 0;
 #pragma unroll
-    for (int = 0; i < Q; i++) {
+    for (int i = 0; i < Q; i++) {
         int tmp = shd_mem[i * B + tid];
         acc = acc + tmp;
         shd_mem[i * B + tid] = acc;
@@ -37,23 +38,25 @@ __device__ inline void threadScan(int32_t *shd_mem, int32_t *shd_buf) {
     shd_buf[tid] = acc;
 }
 
-template <int B, int Q>
+template <uint32_t Q>
 __device__ inline void threadAdd(int32_t *shd_mem, int32_t *shd_buf) {
+    uint32_t B = blockDim.x;
     unsigned int tid = threadIdx.x;
     if (tid != 0) {
         int32_t tmp = shd_buf[tid - 1];
         #pragma unroll
-        for (int = 0; i < Q; i++) {
+        for (int i = 0; i < Q; i++) {
             shd_mem[i * B + tid] = shd_mem[i * B + tid] + tmp;
         }
     }
 }
 
-template <int B, int Q>
+template <uint32_t Q>
 __device__ inline void threadAddVal(int32_t *shd_mem, int32_t val) {
+    uint32_t B = blockDim.x;
     unsigned int tid = threadIdx.x;
     #pragma unroll
-    for (int = 0; i < Q; i++) {
+    for (int i = 0; i < Q; i++) {
         shd_mem[i * B + tid] = shd_mem[i * B + tid] + val;
     }
 }
@@ -64,8 +67,7 @@ __device__ inline void threadAddVal(int32_t *shd_mem, int32_t val) {
 //
 // Each thread in the warp performs a scan across the shared buffer. The
 // result is stored in the shared buffer.
-__device__ inline int32_t warpScan(volatile int32_t *shd_buf, uint32_t idx,
-                                   int32_t) {
+__device__ inline int32_t warpScan(volatile int32_t *shd_buf, uint32_t idx) {
     uint32_t lane = idx & (WARP - 1);  // WARP
     int n = WARP;
     int k = lgWARP;
@@ -89,8 +91,9 @@ __device__ inline int32_t warpScan(volatile int32_t *shd_buf, uint32_t idx,
 //
 // Each thread copy the final value of the scan to the shd_buf. Then
 // we perform a parallel scan across the shd_buf like in assignment 2.
-template <int B, int Q>
+template <uint32_t Q>
 __device__ inline void blockScan(volatile int32_t *shd_buf, uint32_t idx) {
+    uint32_t B = blockDim.x;
     uint32_t lane = idx & (WARP - 1);
     uint32_t warpid = idx >> lgWARP;
 
@@ -120,7 +123,7 @@ __device__ inline void blockScan(volatile int32_t *shd_buf, uint32_t idx) {
 
     __syncthreads();
 
-    if (warpid = 0) {
+    if (warpid == 0) {
         shd_buf[idx] = warp_res;
     }
 }
@@ -136,9 +139,10 @@ __device__ inline void blockScan(volatile int32_t *shd_buf, uint32_t idx) {
 // until the flag_mem is set to 1. This is done by checking the flag_mem
 // array in a loop. Once the flag_mem is set to 1, thread can update the
 // aux_mem array.
-template <int B, int Q>
+template <uint32_t Q>
 __device__ inline void blockLevelScan(int32_t *aux_mem, int32_t *flag_mem,
                                       uint32_t aux_size) {
+    uint32_t B = blockDim.x;
     uint32_t tid = threadIdx.x;
     if (tid == 0) {
         // scan the aux array
@@ -151,8 +155,6 @@ __device__ inline void blockLevelScan(int32_t *aux_mem, int32_t *flag_mem,
         }
     }
 }
-
-#endif /* SPS_CU_H */
 
 /**
  * Naive memcpy kernel, for the purpose of comparing with
@@ -189,15 +191,15 @@ __global__ void naiveMemcpy(int* d_out, int* d_inp, const uint32_t N)
  *   in global memory, but making sure that consecutive threads
  *   read consecutive elements of `d_inp` in a SIMD instruction.
  **/
-template <class T, uint32_t Q>
+template <uint32_t Q>
 __device__ inline void
-copyFromGlb2ShrMem(const uint32_t glb_offs, const uint32_t N, const T& ne, T* d_inp, volatile T* shmem_inp)
+copyFromGlb2ShrMem(int32_t glb_offs, const uint32_t N, int32_t ne, int32_t* d_inp, volatile int32_t* shmem_inp)
 {
 #pragma unroll
 	for (uint32_t i = 0; i < Q; i++) {
 		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
 		uint32_t glb_ind = glb_offs + loc_ind;
-		T elm = ne;
+		uint32_t elm = ne;
 		if (glb_ind < N) {
 			elm = d_inp[glb_ind];
 		}
@@ -218,16 +220,16 @@ copyFromGlb2ShrMem(const uint32_t glb_offs, const uint32_t N, const T& ne, T* d_
  * `shmem_red` is the shared-memory of size
  *    `blockDim.x*Q*sizeof(T)`
  */
-template <class T, uint32_t Q>
+template <uint32_t Q>
 __device__ inline void
-copyFromShr2GlbMem(const uint32_t glb_offs, const uint32_t N, T* d_out, volatile T* shmem_red)
+copyFromShr2GlbMem(int32_t glb_offs, const uint32_t N, uint32_t* d_out, volatile uint32_t* shmem_red)
 {
 #pragma unroll
 	for (uint32_t i = 0; i < Q; i++) {
 		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
 		uint32_t glb_ind = glb_offs + loc_ind;
 		if (glb_ind < N) {
-			T elm = const_cast<const T&>(shmem_red[loc_ind]);
+			uint32_t elm = (shmem_red[loc_ind]);
 			d_out[glb_ind] = elm;
 		}
 	}
@@ -235,16 +237,17 @@ copyFromShr2GlbMem(const uint32_t glb_offs, const uint32_t N, T* d_out, volatile
 }
 
 __device__ inline int getDynID(int* IDAddr){
-	return AtomicAdd(IDAddr,1);
+	return atomicAdd(IDAddr,1);
 }
 
 
-template <int B, int Q>
-__global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out, uint32_t N, int32_t* IDAddr,
+template <uint32_t Q>
+__global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out, const size_t N, int32_t* IDAddr,
                  uint32_t* flagArr, int32_t* aggrArr, int32_t* prefixArr, uint32_t numBlocks){
 
     // Step 1 get a dynamic id
     int32_t dynID = getDynID(IDAddr);
+    int B = blockDim.x;
 
     // If the first dynamic id, of -1 then we are the prefix block instead.
     // an optimisation might be to let id 0 do it, but it still calculates the first block.
@@ -265,16 +268,16 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out, uint32_t N,
     else{ // dynID >= 0
 
         // Step 1.5 calculate some id's and stuff we will use
-        globaloffSet = dynID*B*Q;
+        int32_t globaloffset = dynID*B*Q;
         // Step 2 copy the memory the block will scan into shared memory.
-        __shared__ int32_t blockShrMem[B*Q];
-        copyFromGlb2ShrMem<uint32_t, Q>(globaloffset, N, 0, d_in, blockShrMem);
+        extern __shared__ int32_t blockShrMem[];
+        copyFromGlb2ShrMem<Q>(globaloffset, N, 0, d_in, blockShrMem);
 
         // Step 3 Do the scan on the block
         // First scan each thread
-        Thread_scan<B,Q>(blockShrMem);
+        threadScan<Q>(blockShrMem);
         // Do the scan on the block level
-        int32_t res = blockScan<B,Q>(blockShrMem, threadIdx.x);
+        int32_t res = blockScan<Q>(blockShrMem, threadIdx.x);
         // Save the result in shrmem.
         blockShrMem[threadIdx.x] = res;
 
@@ -299,11 +302,11 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out, uint32_t N,
 
         // Step 7 Sum the prefix into the scan
 
-        threadAddVal<B,Q>(blockShrMem, prefix);
+        threadAddVal<Q>(blockShrMem, prefix);
 
         // Step 8 Copy the result into global memory
 
-        copyFromShr2GlbMem<uint32_t, Q>(globaloffset, N, d_out, blockShreMem)
+        copyFromShr2GlbMem<Q>(globaloffset, N, d_out, blockShrMem);
 
     }
     // Step 9 Die!
@@ -330,3 +333,5 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out, uint32_t N,
     // Step 8 Copy the result into global memory
 
     // Step 9 Die!
+
+#endif /* SPS_CU_H */

@@ -516,9 +516,9 @@ copyFromShr2GlbMem(const uint32_t glb_offs, const uint32_t N, T* d_out, volatile
 	__syncthreads();	// leave this here at the end!
 }
 
-__device__ inline int getDynID(int* IDAddr){
-	return AtomicAdd(IDAddr,1);
-}
+// __device__ inline int getDynID(int* IDAddr){
+// 	return AtomicAdd(IDAddr,1);
+// }
 
 /**
  * This kernel assumes that the generic-associative binary operator
