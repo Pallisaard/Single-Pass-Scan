@@ -55,7 +55,6 @@ int singlePassScan( const uint32_t     B     // desired CUDA block size ( <= 102
             , int32_t* d_in            // device input  of size: N * sizeof(ElTp)
             , int32_t* d_out           // device result of size: N * sizeof(int)
             ){
-    const uint32_t Q = 4; // Find better way to give and perhaps change this.
     const size_t mem_size = N * sizeof(int32_t);
     int32_t* h_out = (int32_t*)malloc(mem_size);
     int32_t* h_ref = (int32_t*)malloc(mem_size);
@@ -77,7 +76,7 @@ int singlePassScan( const uint32_t     B     // desired CUDA block size ( <= 102
     struct timeval t_start, t_end, t_diff;
     // Need to reset the dynID and flag arr each time we call the kernel
     // Before we can start to run it multiple times and get a benchmark.
-    SinglePassScanKernel1<Q><<< num_blocks, B, B*Q>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, num_blocks);
+    SinglePassScanKernel1<<< num_blocks, B, B*(Q+1)>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, num_blocks);
     cudaDeviceSynchronize();
     gpuAssert( cudaPeekAtLastError() );
     // For now we run it once on GPU and test that it is valid.

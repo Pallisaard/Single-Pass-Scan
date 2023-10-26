@@ -12,29 +12,24 @@ TEST_SPMV=test-spmv
 
 default: compile run
 
-compile: $(TEST_PBB) $(TEST_SPMV)
+compile: $(TEST_PBB)
 
 $(TEST_PBB): testPBB.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h
 	$(COMPILER) $(OPT_FLAGS) -o $(TEST_PBB) testPBB.cu
 
-$(TEST_SPMV): spMV-Mul-kernels.cu.h spMV-Mul-main.cu
-	$(COMPILER) $(OPT_FLAGS) -o $(TEST_SPMV) spMV-Mul-main.cu
 
-all: $(TEST_PBB) $(TEST_SPMV)
+all: $(TEST_PBB) 
 
 
-run: $(TEST_PBB) $(TEST_SPMV)
+run: $(TEST_PBB) 
 	./$(TEST_PBB) 100003565 256
-	./$(TEST_SPMV) 11033 2076 256
 
 run-pbb: $(TEST_PBB)
 	./$(TEST_PBB) 100003565 256
 
-run-spmv: $(TEST_SPMV)
-	./$(TEST_SPMV) 11033 2076 256
 
 clean:
-	rm -f $(TEST_PBB) $(TEST_SPMV)
+	rm -f $(TEST_PBB)
 
 
 
