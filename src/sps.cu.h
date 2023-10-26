@@ -264,7 +264,15 @@ __device__ inline void copyFromShr2GlbMem(int32_t glb_offs, const uint32_t N,
     __syncthreads();  // leave this here at the end!
 }
 
-__device__ inline int getDynID(int* IDAddr) { return atomicAdd(IDAddr, 1); }
+__device__ inline int getDynID(int* IDAddr) { 
+    int tid = threadIdx.x
+    __shared__ int32_t dynID;
+    if (tid==0){
+        dynID = atomicAdd(IDAddr, 1); 
+    }
+    __syncthreads();
+    return dynID
+}
 
 __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
                                       const size_t N, int32_t* IDAddr,
