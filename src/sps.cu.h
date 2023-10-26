@@ -67,7 +67,6 @@ __device__ inline void threadAddVal(int32_t* shd_mem, int32_t val) {
 // result is stored in the shared buffer.
 __device__ inline int32_t warpScan(volatile int32_t* shd_buf, uint32_t idx) {
     uint32_t lane = idx & (WARP - 1);  // WARP
-    int n = WARP;
     int k = lgWARP;
 
 #pragma unroll
