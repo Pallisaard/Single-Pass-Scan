@@ -16,8 +16,7 @@ void initArray(int32_t* inp_arr, const uint32_t N, const int R) {
 /**
  * Measure a more-realistic optimal bandwidth by a simple, memcpy-like kernel
  */ 
-int bandwidthMemcpy( const uint32_t B     // desired CUDA block size ( <= 1024, multiple of 32)
-                   , const size_t   N     // length of the input array
+int bandwidthMemcpy( const size_t   N     // length of the input array
                    , int* d_in            // device input  of length N
                    , int* d_out           // device result of length N
 ) {
@@ -49,8 +48,7 @@ int bandwidthMemcpy( const uint32_t B     // desired CUDA block size ( <= 1024, 
     return 0;
 }
 
-int singlePassScan( const uint32_t     B     // desired CUDA block size ( <= 1024, multiple of 32)
-            , const size_t       N     // length of the input array
+int singlePassScan( const size_t       N     // length of the input array
             , int32_t* h_in            // host input    of size: N * sizeof(int)
             , int32_t* d_in            // device input  of size: N * sizeof(ElTp)
             , int32_t* d_out           // device result of size: N * sizeof(int)
@@ -110,6 +108,7 @@ int singlePassScan( const uint32_t     B     // desired CUDA block size ( <= 102
         printf("Single pass scan: VALID result!\n\n");
     }
     free(h_out);
+    free(h_ref);
     cudaFree(IDAddr);
     cudaFree(flagArr);
     cudaFree(aggrArr);
@@ -118,8 +117,7 @@ int singlePassScan( const uint32_t     B     // desired CUDA block size ( <= 102
     return 0;
 }
 
-int scanIncAddI32( const uint32_t B     // desired CUDA block size ( <= 1024, multiple of 32)
-                 , const size_t   N     // length of the input array
+int scanIncAddI32( const size_t   N     // length of the input array
                  , int* h_in            // host input    of size: N * sizeof(int)
                  , int* d_in            // device input  of size: N * sizeof(ElTp)
                  , int* d_out           // device result of size: N * sizeof(int)
@@ -191,17 +189,16 @@ int scanIncAddI32( const uint32_t B     // desired CUDA block size ( <= 1024, mu
 
 
 int main (int argc, char * argv[]) {
-    if (argc != 3) {
-        printf("Usage: %s <array-length> <block-size> <Q-size>\n", argv[0]);
+    if (argc != 2) {
+        printf("Usage: %s <array-length>\n", argv[0]);
         exit(1);
     }
 
     initHwd();
 
     const uint32_t N = atoi(argv[1]);
-    const uint32_t B = atoi(argv[2]);
 
-    printf("Testing parallel basic blocks for input length: %d and CUDA-block size: %d\n\n\n", N, B);
+    printf("Testing parallel basic blocks for input length: %d and CUDA-block size: %d and Q: %d\n\n\n", N, B, Q);
 
     const size_t mem_size = N*sizeof(int32_t);
     int32_t* h_in    = (int32_t*) malloc(mem_size);
@@ -214,14 +211,14 @@ int main (int argc, char * argv[]) {
     cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
  
     // computing a "realistic/achievable" bandwidth figure
-    bandwidthMemcpy(B, N, d_in, d_out);
+    bandwidthMemcpy(N, d_in, d_out);
 
     { // inclusive scan with int addition
         // scanIncAddI32   (B, N, h_in, d_in, d_out);
     }
 
     {
-        singlePassScan(B, N, h_in, d_in, d_out);
+        singlePassScan(N, h_in, d_in, d_out);
     }
 
 

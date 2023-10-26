@@ -8,7 +8,12 @@
 #define X 0
 #define A 1
 #define P 2
+#ifndef Q
 #define Q 4
+#endif
+#ifndef B
+#define B 1024
+#endif
 
 // template <int B, int Q>
 // __device__ inline void threadReduce(int32_t *shd_mem, uint32_t idx) {
@@ -26,7 +31,6 @@
 // shd_mem is a pointer to an array in shared memory. It has size Q * B.
 // idx is the id of the part of the shared memory we start scanning.
 __device__ inline void threadScan(int32_t* shd_mem, int32_t* shd_buf) {
-    uint32_t B = blockDim.x;
     unsigned int tid = threadIdx.x;
     int acc = 0;
 #pragma unroll
@@ -39,7 +43,6 @@ __device__ inline void threadScan(int32_t* shd_mem, int32_t* shd_buf) {
 }
 
 __device__ inline void threadAdd(int32_t* shd_mem, int32_t* shd_buf) {
-    uint32_t B = blockDim.x;
     unsigned int tid = threadIdx.x;
     if (tid != 0) {
         int32_t tmp = shd_buf[tid - 1];
@@ -51,7 +54,6 @@ __device__ inline void threadAdd(int32_t* shd_mem, int32_t* shd_buf) {
 }
 
 __device__ inline void threadAddVal(int32_t* shd_mem, int32_t val) {
-    uint32_t B = blockDim.x;
     unsigned int tid = threadIdx.x;
 #pragma unroll
     for (int i = 0; i < Q; i++) {
@@ -89,7 +91,6 @@ __device__ inline int32_t warpScan(volatile int32_t* shd_buf, uint32_t idx) {
 // Each thread copy the final value of the scan to the shd_buf. Then
 // we perform a parallel scan across the shd_buf like in assignment 2.
 __device__ inline void blockScan(volatile int32_t* shd_buf, uint32_t idx) {
-    uint32_t B = blockDim.x;
     uint32_t lane = idx & (WARP - 1);
     uint32_t warpid = idx >> lgWARP;
 
@@ -137,7 +138,6 @@ __device__ inline void blockScan(volatile int32_t* shd_buf, uint32_t idx) {
 // aux_mem array.
 __device__ inline void blockLevelScan(int32_t* aux_mem, int32_t* flag_mem,
                                       uint32_t aux_size) {
-    uint32_t B = blockDim.x;
     uint32_t tid = threadIdx.x;
     if (tid == 0) {
         // scan the aux array
@@ -156,7 +156,6 @@ __device__ inline void lookbackScan(int32_t* agg_mem, int32_t* pref_mem,
                                   int32_t* flag_mem, uint32_t dyn_idx,
                                   int32_t* shd_buf) {
     uint32_t tid = threadIdx.x;
-    uint32_t B = blockDim.x;
     int32_t agg_val = shd_buf[dyn_idx];
 
     if (tid == 0 && dyn_idx == 0) {
@@ -252,13 +251,13 @@ __device__ inline void copyFromGlb2ShrMem(int32_t glb_offs, const uint32_t N,
  */
 __device__ inline void copyFromShr2GlbMem(int32_t glb_offs, const uint32_t N,
                                           int32_t* d_out,
-                                          volatile int32_t* shmem_red) {
+                                          volatile int32_t* shmem) {
 #pragma unroll
     for (uint32_t i = 0; i < Q; i++) {
         uint32_t loc_ind = blockDim.x * i + threadIdx.x;
         uint32_t glb_ind = glb_offs + loc_ind;
         if (glb_ind < N) {
-            uint32_t elm = (shmem_red[loc_ind]);
+            uint32_t elm = (shmem[loc_ind]);
             d_out[glb_ind] = elm;
         }
     }
@@ -273,7 +272,6 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
                                       int32_t* prefixArr, uint32_t numBlocks) {
     // Step 1 get a dynamic id
     int32_t dynID = getDynID(IDAddr);
-    int B = blockDim.x;
     uint32_t tid = threadIdx.x;
 
     // If the first dynamic id, of -1 then we are the prefix block instead.
@@ -300,6 +298,7 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
         extern __shared__ int32_t blockShrMem[];
         int32_t* blockShrBuf = blockShrMem + B * Q;
         copyFromGlb2ShrMem(globaloffset, N, 0, d_in, blockShrMem);
+        copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem);
 
         // Step 3 Do the scan on the block
         // First scan each thread
@@ -335,7 +334,7 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
 
         // Step 8 Copy the result into global memory
 
-        copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem);
+        //copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem);
     }
     // Step 9 Die!
 }
