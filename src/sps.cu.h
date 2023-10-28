@@ -8,8 +8,13 @@
 #define X 0
 #define A 1
 #define P 2
-#define Q 2
 #define Bs 4
+#ifndef Q
+#define Q 4
+#endif
+#ifndef B
+#define B 1024
+#endif
 
 // template <int B, int Q>
 // __device__ inline void threadReduce(int32_t *shd_mem, uint32_t idx) {
@@ -259,14 +264,22 @@ __device__ inline void copyFromShr2GlbMem(int32_t glb_offs, const uint32_t N,
         uint32_t loc_ind = blockDim.x * i + tid;
         uint32_t glb_ind = glb_offs + loc_ind;
         if (glb_ind < N) {
-            uint32_t elm = (shmem_red[loc_ind]);
+            uint32_t elm = (shmem[loc_ind]);
             d_out[glb_ind] = elm;
         }
     }
     __syncthreads();  // leave this here at the end!
 }
 
-__device__ inline int getDynID(int* IDAddr) { return atomicAdd(IDAddr, 1); }
+__device__ inline int getDynID(int* IDAddr) { 
+    int tid = threadIdx.x
+    __shared__ int32_t dynID;
+    if (tid==0){
+        dynID = atomicAdd(IDAddr, 1); 
+    }
+    __syncthreads();
+    return dynID
+}
 
 __global__ void SPSFunctionTest(int32_t* d_in, int32_t* d_out, const size_t N,
                                 int32_t* IDAddr, uint32_t* flagArr,
@@ -291,7 +304,6 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
                                       int32_t* prefixArr, uint32_t numBlocks) {
     // Step 1 get a dynamic id
     int32_t dynID = getDynID(IDAddr);
-    int B = blockDim.x;
     uint32_t tid = threadIdx.x;
 
     // If the first dynamic id, of -1 then we are the prefix block instead.
