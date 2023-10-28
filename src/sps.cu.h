@@ -8,7 +8,8 @@
 #define X 0
 #define A 1
 #define P 2
-#define Q 4
+#define Q 2
+#define Bs 4
 
 // template <int B, int Q>
 // __device__ inline void threadReduce(int32_t *shd_mem, uint32_t idx) {
@@ -66,7 +67,7 @@ __device__ inline void threadAddVal(int32_t* shd_mem, int32_t val,
 // Each thread in the warp performs a scan across the shared buffer. The
 // result is stored in the shared buffer.
 __device__ inline int32_t warpScan(volatile int32_t* shd_buf, uint32_t tid) {
-    uint32_t lane = idx & (WARP - 1);  // WARP
+    uint32_t lane = tid & (WARP - 1);  // WARP
     int k = lgWARP;
 
 #pragma unroll
@@ -191,9 +192,8 @@ __device__ inline void lookbackScan(int32_t* agg_mem, int32_t* pref_mem,
  * Naive memcpy kernel, for the purpose of comparing with
  * a more "realistic" bandwidth number.
  */
-__global__ void naiveMemcpy(int* d_out, int* d_inp, const uint32_t N,
-                            uint32_t tid) {
-    uint32_t gid = blockIdx.x * blockDim.x + tid;
+__global__ void naiveMemcpy(int* d_out, int* d_inp, const uint32_t N) {
+    uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
     if (gid < N) {
         d_out[gid] = d_inp[gid];
     }
@@ -270,15 +270,16 @@ __device__ inline int getDynID(int* IDAddr) { return atomicAdd(IDAddr, 1); }
 
 __global__ void SPSFunctionTest(int32_t* d_in, int32_t* d_out, const size_t N,
                                 int32_t* IDAddr, uint32_t* flagArr,
-                                int32_t* aggrArr, int32_t* prefixArr,
-                                uint32_t numBlocks) {
+                                int32_t* aggrArr, int32_t* prefixArr) {
     // Step 1 get a dynamic id
-    int32_t dynID = 0;
+    int32_t dynID = blockIdx.x;
+	int B = blockDim.x;
+	uint32_t tid = threadIdx.x;
 
     // Step 1.5 calculate some id's and stuff we will use
-    int32_t globaloffset = dynID * B * Q;
+    int32_t globaloffset = dynID * Bs * Q;
     // Step 2 copy the memory the block will scan into shared memory.
-    __shared__ int32_t blockShrMem[B * Q];
+    __shared__ int32_t blockShrMem[Bs * Q];
     int32_t* blockShrBuf = blockShrMem + B * Q;
     copyFromGlb2ShrMem(globaloffset, N, 0, d_in, blockShrMem, tid);
     copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
@@ -322,7 +323,7 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
         // First scan each thread
         threadScan(blockShrMem, blockShrBuf, tid);
         // Do the scan on the block level
-        blockScan(blockShrBuf, threadIdx.x, tid);
+        blockScan(blockShrBuf, tid);
         // Save the result in shrmem.
         threadAdd(blockShrMem, blockShrBuf, tid);
 

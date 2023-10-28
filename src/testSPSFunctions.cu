@@ -73,12 +73,21 @@ int spsTests( const uint32_t     B     // desired CUDA block size ( <= 1024, mul
     cudaMemset(prefixArr, 0, sizeof(uint32_t));
 
 		{
-			SPSFunctionTest(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, num_blocks);
+			SPSFunctionTest<<<num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
 		}
 		cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
 
+		printf("N: %d\n", N);
+		printf("memsize: %d\n", mem_size);
+		printf("num_blocks: %d\n", num_blocks);
 		for (uint32_t i = 0; i < 16; i++) {
-			if (h_out != 1) {
+			printf("Single Pass Scan at index %d, dev-val: %d\n", i, h_out[i]);
+		}
+
+		printf("\n");
+
+		for (uint32_t i = 0; i < 16; i++) {
+			if (h_out[i] != (int32_t)1) {
 				printf("!!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
 				, i, h_out[i], 1);
 				exit(1);
@@ -261,6 +270,9 @@ int main (int argc, char * argv[]) {
 		}
     cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
  
+    {
+			spsTests(B, N, h_in, d_in, d_out);
+    }
     // {
     //     singlePassScan(B, N, h_in, d_in, d_out);
     // }
