@@ -56,25 +56,28 @@ int singlePassScan( const size_t       N     // length of the input array
     const size_t mem_size = N * sizeof(int32_t);
     int32_t* h_out = (int32_t*)malloc(mem_size);
     int32_t* h_ref = (int32_t*)malloc(mem_size);
-    uint32_t num_blocks = (N+B*Q-1)/(B*Q);
+    uint32_t num_blocks = (N+B*Q-1)/(B*Q) + 1;  // We add 1 to be our auxiliary block.
+		size_t f_array_size = num_blocks - 1;
     int32_t* IDAddr;
     uint32_t* flagArr;
     int32_t* aggrArr;
     int32_t* prefixArr;
     cudaMalloc((void**)&IDAddr, sizeof(int32_t));
     cudaMemset(IDAddr, -1, sizeof(int32_t));
-    cudaMalloc((void**)&flagArr, sizeof(uint32_t));
-    cudaMemset(flagArr, X, sizeof(uint32_t));
-    cudaMalloc((void**)&aggrArr, sizeof(int32_t));
-    cudaMemset(aggrArr, 0, sizeof(int32_t));
-    cudaMalloc((void**)&prefixArr, sizeof(uint32_t));
-    cudaMemset(prefixArr, 0, sizeof(uint32_t));
+    cudaMalloc((void**)&flagArr, f_array_size * sizeof(uint32_t));
+    cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
+    cudaMalloc((void**)&aggrArr, f_array_size * sizeof(int32_t));
+    cudaMemset(aggrArr, 0, f_array_size * sizeof(int32_t));
+    cudaMalloc((void**)&prefixArr, f_array_size * sizeof(uint32_t));
+    cudaMemset(prefixArr, 0, f_array_size * sizeof(uint32_t));
 
     unsigned long int elapsed;
     struct timeval t_start, t_end, t_diff;
     // Need to reset the dynID and flag arr each time we call the kernel
     // Before we can start to run it multiple times and get a benchmark.
-    SinglePassScanKernel1<<< num_blocks, B, B*(Q+1)>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, num_blocks);
+    {
+			SinglePassScanKernel1<<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+		}
     cudaDeviceSynchronize();
     gpuAssert( cudaPeekAtLastError() );
     // For now we run it once on GPU and test that it is valid.
@@ -98,6 +101,10 @@ int singlePassScan( const size_t       N     // length of the input array
 
     { // Validation
         cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+        for(uint32_t i = 0; i<N; i++) {
+						printf("Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
+                      , i, h_out[i], h_ref[i]);
+        }
         for(uint32_t i = 0; i<N; i++) {
             if(h_out[i] != h_ref[i]) {
                 printf("!!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
@@ -207,11 +214,19 @@ int main (int argc, char * argv[]) {
     cudaMalloc((void**)&d_in ,   mem_size);
     cudaMalloc((void**)&d_out,   mem_size);
 
-    initArray(h_in, N, 13);
+    // initArray(h_in, N, 13);
+		for (uint32_t i = 0; i < N; i++) {
+			h_in[i] = 1;
+		}
+		// for (int i = 0; i < N; i++) {
+		// 	printf("Input array at index %d: %d\n", i, h_in[i]);
+		// }
+
     cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
  
+
     // computing a "realistic/achievable" bandwidth figure
-    bandwidthMemcpy(N, d_in, d_out);
+    // bandwidthMemcpy(N, d_in, d_out);
 
     { // inclusive scan with int addition
         // scanIncAddI32   (B, N, h_in, d_in, d_out);
