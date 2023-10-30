@@ -63,34 +63,88 @@ int singlePassScan( const size_t       N     // length of the input array
     int32_t* aggrArr;
     int32_t* prefixArr;
     cudaMalloc((void**)&IDAddr, sizeof(int32_t));
-    cudaMemset(IDAddr, -1, sizeof(int32_t));
-    cudaMalloc((void**)&flagArr, f_array_size * sizeof(uint32_t));
+		cudaMemset(IDAddr, -1, sizeof(int32_t));
+    cudaMalloc(&flagArr, f_array_size * sizeof(uint32_t));
     cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
-    cudaMalloc((void**)&aggrArr, f_array_size * sizeof(int32_t));
+    cudaMalloc(&aggrArr, f_array_size * sizeof(int32_t));
+    cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
     cudaMemset(aggrArr, 0, f_array_size * sizeof(int32_t));
-    cudaMalloc((void**)&prefixArr, f_array_size * sizeof(uint32_t));
+    cudaMalloc(&prefixArr, f_array_size * sizeof(uint32_t));
+    cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
+    cudaMemset(aggrArr, 0, f_array_size * sizeof(int32_t));
     cudaMemset(prefixArr, 0, f_array_size * sizeof(uint32_t));
-
+		
+		// dry run to exercise the d_out allocation!
+		SinglePassScanKernel1<<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+		// printf("done 0\n");
+		cudaDeviceSynchronize();
+		
     unsigned long int elapsed;
     struct timeval t_start, t_end, t_diff;
+		// time the GPU computation
     // Need to reset the dynID and flag arr each time we call the kernel
     // Before we can start to run it multiple times and get a benchmark.
     {
-			SinglePassScanKernel1<<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+			gettimeofday(&t_start, NULL);
+			for(int i=0; i<RUNS_GPU; i++) {
+				cudaMemset(IDAddr, -1, sizeof(int32_t));
+				cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
+				cudaMemset(aggrArr, 0, f_array_size * sizeof(int32_t));
+				cudaMemset(prefixArr, 0, f_array_size * sizeof(uint32_t));
+				SinglePassScanKernel1<<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+				// printf("gpu %d\n", i + 1);
+			}
+			cudaDeviceSynchronize();
+			gettimeofday(&t_end, NULL);
+			timeval_subtract(&t_diff, &t_end, &t_start);
+			elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_GPU;
+			double gigaBytesPerSec = N  * (2*sizeof(int32_t) + sizeof(int32_t)) * 1.0e-3f / elapsed;
+			printf("Single Pass Scan GPU Kernel 1 runs in: %lu microsecs, GB/sec: %.2f\n", elapsed, gigaBytesPerSec);
 		}
-    cudaDeviceSynchronize();
     gpuAssert( cudaPeekAtLastError() );
-    // For now we run it once on GPU and test that it is valid.
+
+		// Our best case comparison will be the memcpy comparison
+		{	// memcpy comparison
+			gettimeofday(&t_start, NULL);
+			for(int i=0; i<RUNS_GPU; i++) {
+				// simple_cuda_memcpy<<< num_blocks, B>>>(d_in, d_out, N);
+				cudaMemcpy(d_in, d_out, mem_size, cudaMemcpyDeviceToDevice);
+			}
+			cudaDeviceSynchronize();
+			gettimeofday(&t_end, NULL);
+			timeval_subtract(&t_diff, &t_end, &t_start);
+			elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_CPU;
+			double gigaBytesPerSec = N * (sizeof(int) + sizeof(int)) * 1.0e-3f / elapsed;
+			printf("cudaMemcpy runs in: %lu microsecs, GB/sec: %.2f\n"
+						, elapsed, gigaBytesPerSec);
+		}
+
+		{	// a comparison with a naive memcpy implementation
+			gettimeofday(&t_start, NULL);
+			for(int i=0; i<RUNS_GPU; i++) {
+				// simple_cuda_memcpy<<< num_blocks, B>>>(d_in, d_out, N);
+				naiveMemcpy<<< num_blocks, B>>>(d_in, d_out, N);
+			}
+			cudaDeviceSynchronize();
+			gettimeofday(&t_end, NULL);
+			timeval_subtract(&t_diff, &t_end, &t_start);
+			elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_CPU;
+			double gigaBytesPerSec = N * (sizeof(int) + sizeof(int)) * 1.0e-3f / elapsed;
+			printf("A naive GPU memcpy implementation runs in: %lu microsecs, GB/sec: %.2f\n"
+						, elapsed, gigaBytesPerSec);
+		}
+
     // The CPU we might as well just add the benchmark
     { // sequential computation
         gettimeofday(&t_start, NULL);
         for(int i=0; i<RUNS_CPU; i++) {
             int acc = 0;
             for(uint32_t i=0; i<N; i++) {
-                acc += h_in[i];
+                acc = h_in[i] + acc;
                 h_ref[i] = acc;
             }
         }
+				cudaDeviceSynchronize();
         gettimeofday(&t_end, NULL);
         timeval_subtract(&t_diff, &t_end, &t_start);
         elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_CPU;
@@ -99,12 +153,10 @@ int singlePassScan( const size_t       N     // length of the input array
               , elapsed, gigaBytesPerSec);
     }
 
+		// NOTE PERFORMANCE IN GB/s
+
     { // Validation
         cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
-        for(uint32_t i = 0; i<N; i++) {
-						printf("Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
-                      , i, h_out[i], h_ref[i]);
-        }
         for(uint32_t i = 0; i<N; i++) {
             if(h_out[i] != h_ref[i]) {
                 printf("!!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
@@ -218,9 +270,11 @@ int main (int argc, char * argv[]) {
 		for (uint32_t i = 0; i < N; i++) {
 			h_in[i] = 1;
 		}
+		// printf("Input array:\n");
 		// for (int i = 0; i < N; i++) {
-		// 	printf("Input array at index %d: %d\n", i, h_in[i]);
+		// 	printf("%d ", h_in[i]);
 		// }
+		// printf("\n");
 
     cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
  
