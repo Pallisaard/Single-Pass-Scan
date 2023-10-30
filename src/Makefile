@@ -1,10 +1,12 @@
 COMPILER?=nvcc
 OPT_FLAGS?=-O3 
 
-BB=256 # 1024
-QQ=2 #4
+BB=32 # base: 1024
+QQ=4 # base: 10
 
 #-arch=compute_35
+# NOTE COMPARE WITH VOLATILE OFF AND REMEMBER TO
+# REPLACE WITH __threadfence()
 
 LDFLAGS?=-lOpenCL
 
@@ -20,19 +22,19 @@ default: compile run
 compile: $(TEST_SPS)
 
 $(TEST_SPS): testPBB.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
-	$(COMPILER) $(OPT_FLAGS) -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) testPBB.cu
+	$(COMPILER) $(OPT_FLAGS)  -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) testPBB.cu
 
 $(TEST_F): testSPSFunctions.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
-	$(COMPILER) $(OPT_FLAGS) -o $(TEST_F) -D B=4 -D Q=2 testSPSFunctions.cu
+	$(COMPILER) $(OPT_FLAGS) -o $(TEST_F) -D B=$(BB) -D Q=$(QQ) testSPSFunctions.cu
 
 all: $(TEST_SPS) 
 
 # 100003565
 run: $(TEST_SPS) 
-	timeout 15s ./$(TEST_SPS) 265
+	timeout 20s ./$(TEST_SPS) 100000000
 
 run-ftest: $(TEST_F)
-	timeout 5s ./$(TEST_F) 16
+	timeout 10s ./$(TEST_F) 200
 
 clean:
 	rm -f $(TEST_SPS)
