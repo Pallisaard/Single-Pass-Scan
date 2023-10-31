@@ -2,23 +2,23 @@
 #define HWD_SOFT_CONSTANTS
 
 #include <sys/time.h>
-#include <time.h> 
+#include <time.h>
 
-#define DEBUG_INFO  true
+#define DEBUG_INFO true
 
-#define lgWARP      5
-#define WARP        (1<<lgWARP)
+#define lgWARP 5
+#define WARP (1 << lgWARP)
 
-//#define WORKGROUP_SIZE      128
-//#define MAX_WORKGROUP_SIZE  1024
+// #define WORKGROUP_SIZE      128
+// #define MAX_WORKGROUP_SIZE  1024
 
-#define RUNS_GPU            100
-#define RUNS_CPU            100
-#define NUM_BLOCKS_SCAN     1024
-#define ELEMS_PER_THREAD    12
+#define RUNS_GPU 100
+#define RUNS_CPU 100
+#define NUM_BLOCKS_SCAN 1024
+#define ELEMS_PER_THREAD 12
 
 typedef unsigned int uint32_t;
-typedef int           int32_t;
+typedef int int32_t;
 
 uint32_t MAX_HWDTH;
 uint32_t MAX_BLOCK;
@@ -43,14 +43,24 @@ void initHwd() {
     }
 }
 
-int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
-{
-    unsigned int resolution=1000000;
-    long int diff = (t2->tv_usec + resolution * t2->tv_sec) - (t1->tv_usec + resolution * t1->tv_sec);
+int timeval_subtract(struct timeval *result, struct timeval *t2,
+                     struct timeval *t1) {
+    unsigned int resolution = 1000000;
+    long int diff = (t2->tv_usec + resolution * t2->tv_sec) -
+                    (t1->tv_usec + resolution * t1->tv_sec);
     result->tv_sec = diff / resolution;
     result->tv_usec = diff % resolution;
-    return (diff<0);
+    return (diff < 0);
 }
 
+int timeval_add(struct timeval *result, struct timeval *t2,
+                struct timeval *t1) {
+    unsigned int resolution = 1000000;
+    long int sum = (t2->tv_usec + resolution * t2->tv_sec) +
+                   (t1->tv_usec + resolution * t1->tv_sec);
+    result->tv_sec = sum / resolution;
+    result->tv_usec = sum % resolution;
+    return (sum < 0);
+}
 
-#endif //HWD_SOFT_CONSTANTS
+#endif  // HWD_SOFT_CONSTANTS
