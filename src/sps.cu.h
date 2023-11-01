@@ -146,11 +146,10 @@ __device__ inline void blockLevelScan(int32_t* aux_mem, int32_t* flag_mem,
 
 // device function for a lookback scan method.
 __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
-								    volatile int32_t* pref_mem,
-                                    volatile uint32_t* flag_mem,
-									int32_t* shr_mem, uint32_t dyn_idx,
-									uint32_t tid) {
-    // uint32_t B = blockDim.x;
+								       volatile int32_t* pref_mem,
+                                       volatile uint32_t* flag_mem,
+									   int32_t* shr_mem, uint32_t dyn_idx,
+									   uint32_t tid) {
 
 	// Handle lookback differently depending on dynamic id.
     if (tid == B - 1 && dyn_idx == 0) {
@@ -160,39 +159,65 @@ __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
 		// printf("dynID 0 sets pref to %d\n", agg_val);
         __threadfence();
         flag_mem[dyn_idx] = P;
+
     } else if (tid == B - 1 && dyn_idx > 0) {
 		int32_t agg_val = shr_mem[(Q - 1) * B + tid];
         agg_mem[dyn_idx] = agg_val;
         __threadfence();
         flag_mem[dyn_idx] = A;
-		__threadfence();
         int32_t grab_id = dyn_idx - 1;
         while (flag_mem[grab_id] != P) {
             if (flag_mem[grab_id] == A && grab_id > 0) {
-				// printf("dynID %d aggregates %d at %d\n", dyn_idx, agg_mem[grab_id], grab_id);
 				agg_val = agg_mem[grab_id] + agg_val;
-				// pref_mem[grab_id] = agg_val;
-				// __threadfence();
-				// flag_mem[grab_id] = P;
                 grab_id--;
             }
         }
-		__threadfence();
-		// printf("dynID %d gets pref %d at %d\n", dyn_idx, pref_mem[grab_id], grab_id);
 		pref_mem[dyn_idx] = agg_val + pref_mem[grab_id];
-		// printf("dynID %d sets pref to %d\n", dyn_idx, pref_mem[dyn_idx]);
         __threadfence();
         flag_mem[dyn_idx] = P;
     }
 
-	__threadfence();
 	__syncthreads();
 	int32_t prefix = pref_mem[dyn_idx] - agg_mem[dyn_idx];
 
-	__threadfence();  // it might work without
-	__syncthreads();  // also might work without
     return prefix;
 }
+// device function for a lookback scan method.
+// __device__ inline int32_t fenceFreeLookbackScan(volatile int64_t* agg_mem,
+// 									   			int32_t* shr_mem, uint32_t dyn_idx,
+// 									   			uint32_t tid, int32_t val) {
+
+// 	// int32_t agg_val = shr_mem[(Q - 1) * B + tid];
+// 	// Handle lookback differently depending on dynamic id.
+//     if (tid == B - 1 && dyn_idx == 0) {
+// 		int32_t pref_elem = shr_mem[(Q - 1) * B + tid];
+// 		int64_t agg_flag_comp = (int64_t)(pref_elem) << 32 | P;
+// 		agg_mem[dyn_idx] = agg_flag_comp;
+
+//     } else if (dyn_idx > 0) {
+// 		int32_t pref_elem = shr_mem[(Q - 1) * B + tid];
+// 		int32_t agg_val = 0;
+// 		int64_t agg_flag_comp = (int64_t)(agg_val) << 32 | A;
+//         agg_mem[dyn_idx] = agg_flag_comp;
+//         int32_t grab_id = dyn_idx - 1;
+// 		while (0x != (agg_mem[grab_id] & 0x00000000FFFFFFFF) && grab_id > 0) {
+// 			if (0x != (agg_mem[grab_id] & 0x00000000FFFFFFFF) && grab_id > 0) {
+// 				agg_val = (agg_mem[grab_id] >> 32) + agg_val;
+// 				grab_id--:
+//             }
+//         }
+// 		agg_val = agg_val + agg_mem[grab_id] >> 32;
+// 		int32_t inc_prefix = agg_val + pref_elem;
+// 		agg_mem[dyn_idx] = (int64_t)(inc_prefix) << 32 | P;
+//     }
+
+// 	__syncthreads();
+// 	if (dyn_idx == 0)
+// 		return 0;
+
+// 	int32_t prefix = int32_t(agg_val >> 32);
+//     return prefix;
+// }
 
 /**
  * Helper function that copies `Q` input elements per thread from
@@ -305,9 +330,9 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	// Step 2 copy the memory the block will scan into shared memory.
 	copyGlb2Shr(globaloffset, N, 0, d_in, blockShrMem, tid);
 
-// #define testid2 2
-#ifdef testid2
-if (tid == 0 && dynID == testid2) {
+	// #define testid2 2
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("glbMem initial\n");
 		for (int i = 0; i < N; i++) {
 			printf("%d ", d_in[i]);

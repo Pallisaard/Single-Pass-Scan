@@ -2,7 +2,7 @@ COMPILER?=nvcc
 OPT_FLAGS?=-O3 
 
 BB=256 # base: 1024
-QQ=40 # base: 10
+QQ=32 # base: 10
 
 #-arch=compute_35
 # NOTE COMPARE WITH VOLATILE OFF AND REMEMBER TO

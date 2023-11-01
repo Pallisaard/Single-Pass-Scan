@@ -488,34 +488,34 @@ int scanIncAddI32( const uint32_t b_size     // desired CUDA block size ( <= 102
 
     gpuAssert( cudaPeekAtLastError() );
 
-    // { // sequential computation
-    //     gettimeofday(&t_start, NULL);
-    //     for(int i=0; i<RUNS_CPU; i++) {
-    //         int acc = 0;
-    //         for(uint32_t i=0; i<N; i++) {
-    //             acc += h_in[i];
-    //             h_ref[i] = acc;
-    //         }
-    //     }
-    //     gettimeofday(&t_end, NULL);
-    //     timeval_subtract(&t_diff, &t_end, &t_start);
-    //     elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_CPU;
-    //     double gigaBytesPerSec = N * (sizeof(int) + sizeof(int)) * 1.0e-3f / elapsed;
-    //     printf("Scan Inclusive AddI32 CPU Sequential runs in: %lu microsecs, GB/sec: %.2f\n"
-    //           , elapsed, gigaBytesPerSec);
-    // }
+    { // sequential computation
+        gettimeofday(&t_start, NULL);
+        for(int i=0; i<RUNS_CPU; i++) {
+            int acc = 0;
+            for(uint32_t i=0; i<N; i++) {
+                acc += h_in[i];
+                h_ref[i] = acc;
+            }
+        }
+        gettimeofday(&t_end, NULL);
+        timeval_subtract(&t_diff, &t_end, &t_start);
+        elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_CPU;
+        double gigaBytesPerSec = N * (sizeof(int) + sizeof(int)) * 1.0e-3f / elapsed;
+        printf("Scan Inclusive AddI32 CPU Sequential runs in: %lu microsecs, GB/sec: %.2f\n"
+              , elapsed, gigaBytesPerSec);
+    }
 
-    // { // Validation
-    //     cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
-    //     for(uint32_t i = 0; i<N; i++) {
-    //         if(h_out[i] != h_ref[i]) {
-    //             printf("!!!INVALID!!!: Scan Inclusive AddI32 at index %d, dev-val: %d, host-val: %d\n"
-    //                   , i, h_out[i], h_ref[i]);
-    //             exit(1);
-    //         }
-    //     }
-    //     printf("Scan Inclusive AddI32: VALID result!\n\n");
-    // }
+    { // Validation
+        cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+        for(uint32_t i = 0; i<N; i++) {
+            if(h_out[i] != h_ref[i]) {
+                printf("!!!INVALID!!!: Scan Inclusive AddI32 at index %d, dev-val: %d, host-val: %d\n"
+                      , i, h_out[i], h_ref[i]);
+                exit(1);
+            }
+        }
+        printf("Scan Inclusive AddI32: VALID result!\n\n");
+    }
 
     free(h_out);
     free(h_ref);
@@ -559,14 +559,14 @@ int main (int argc, char * argv[]) {
     // computing a "realistic/achievable" bandwidth figure
 	bandwidthMemcpy(N, d_in, d_out);
 	bandwidthCudaMemcpy(N, d_in, d_out);
+	bandwidthRegMemcpy(N, h_in, d_in, d_out);
+	bandwidthGlgShrMemcpy(N, h_in, d_in, d_out);
 
 	// computing a bandwidth figure using registers
 	// {
-	// 	bandwidthRegMemcpy(N, h_in, d_in, d_out);
 	// }
 
 	// {
-	// 	bandwidthGlgShrMemcpy(N, h_in, d_in, d_out);
 	// }
 
     // Computing a single pass scan using lookback.
