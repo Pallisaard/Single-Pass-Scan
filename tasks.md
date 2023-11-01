@@ -14,6 +14,7 @@
 - [ ] Implement templates for variadic types.
   - [ ] Write kernel tests for a `float32` version.
   - [ ] Write kernel tests for a `(int32, int32, int32, int32)`.
+- [ ] Follow up on code and remove unwanted kernels and functions.
 - [ ] Optional: Implement fence free lookback version.
 
 ## Report
