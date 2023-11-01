@@ -1,8 +1,8 @@
 COMPILER?=nvcc
 OPT_FLAGS?=-O3 
 
-BB=32 # base: 1024
-QQ=4 # base: 10
+BB=256 # base: 1024
+QQ=40 # base: 10
 
 #-arch=compute_35
 # NOTE COMPARE WITH VOLATILE OFF AND REMEMBER TO
@@ -14,6 +14,7 @@ TEST_PBB=test-pbb
 TEST_SPMV=test-spmv
 TEST_F=test-f
 TEST_SPS=test-sps
+TEST_TABLE=test-table
 
 .PHONY: clean all run
 
@@ -21,20 +22,26 @@ default: compile run
 
 compile: $(TEST_SPS)
 
-$(TEST_SPS): testPBB.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
-	$(COMPILER) $(OPT_FLAGS)  -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) testPBB.cu
+$(TEST_SPS): testSPS.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
+	$(COMPILER) $(OPT_FLAGS)  -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) testSPS.cu
 
 $(TEST_F): testSPSFunctions.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
 	$(COMPILER) $(OPT_FLAGS) -o $(TEST_F) -D B=$(BB) -D Q=$(QQ) testSPSFunctions.cu
 
-all: $(TEST_SPS) 
+$(TEST_TABLE): testSPStable.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
+	$(COMPILER) $(OPT_FLAGS) -o $(TEST_TABLE) -D B=$(BB) -D Q=$(QQ) testSPStable.cu
 
-# 100003565
-run: $(TEST_SPS) 
-	timeout 20s ./$(TEST_SPS) 100000000
+all: $(TEST_SPS)
+
+# 100003565 1073741824
+run: $(TEST_SPS)
+	./$(TEST_SPS) 100003565
 
 run-ftest: $(TEST_F)
-	timeout 10s ./$(TEST_F) 200
+	timeout 10s ./$(TEST_F) 400
+
+run-table: $(TEST_TABLE)
+	./$(TEST_TABLE)
 
 clean:
 	rm -f $(TEST_SPS)

@@ -62,8 +62,9 @@
 int spsTests(const size_t N, int32_t* h_in, int32_t* d_in, int32_t* d_out) {
     const size_t mem_size = N * sizeof(int32_t);
     int32_t* h_out = (int32_t*)malloc(mem_size);
+    int32_t* h_ref = (int32_t*)malloc(mem_size);
     uint32_t num_blocks = (N+B*Q-1)/(B*Q);  // We add 1 to be our auxiliary block.
-		size_t f_array_size = num_blocks;
+	size_t f_array_size = num_blocks;
     int32_t* IDAddr;
     uint32_t* flagArr;
     int32_t* aggrArr;
@@ -77,30 +78,58 @@ int spsTests(const size_t N, int32_t* h_in, int32_t* d_in, int32_t* d_out) {
     cudaMalloc((void**)&prefixArr, f_array_size * sizeof(uint32_t));
     cudaMemset(prefixArr, 0, f_array_size * sizeof(uint32_t));
 
-		{
-			SinglePassScanKernel2<<<num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+	{
+		SinglePassScanKernel2<<<num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+		cudaDeviceSynchronize();
+	}
+	cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+
+	// print prefix array
+	int32_t* h_prefix = (int32_t*)malloc(f_array_size * sizeof(int32_t));
+	cudaMemcpy(h_prefix, prefixArr, f_array_size * sizeof(int32_t), cudaMemcpyDeviceToHost);
+	printf("Prefix array:\n");
+	for (uint32_t i = 0; i < f_array_size; i++) {
+		printf("%d ", h_prefix[i]);
+	}
+	printf("\n");
+	free(h_prefix);
+
+	// print agg array
+	int32_t* h_agg = (int32_t*)malloc(f_array_size * sizeof(int32_t));
+	cudaMemcpy(h_agg, aggrArr, f_array_size * sizeof(int32_t), cudaMemcpyDeviceToHost);
+	printf("Agg array:\n");
+	for (uint32_t i = 0; i < f_array_size; i++) {
+		printf("%d ", h_agg[i]);
+	}
+	printf("\n");
+	free(h_agg);
+
+	{
+		int32_t acc = 0;
+		for (int i = 0; i < N; i++) {
+			acc += h_in[i];
+			h_ref[i] = acc;
 		}
-		// cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+	}
+	// int32_t h_ref[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
 
-		// int32_t h_ref[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+	// for (uint32_t i = 0; i < 16; i++) {
+	// 	printf("Single Pass Scan at index %d, dev-val: %d\n", i, h_out[i]);
+	// }
 
-		// for (uint32_t i = 0; i < 16; i++) {
-		// 	printf("Single Pass Scan at index %d, dev-val: %d\n", i, h_out[i]);
-		// }
+	// printf("\n");
 
-		// printf("\n");
-
-		// for (uint32_t i = 0; i < N; i++) {
-		// 	if (h_out[i] != h_ref[i]) {
-		// 		printf("!!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
-		// 		, i, h_out[i], h_ref[i]);
-		// 		exit(1);
-		// 	}
-		// }
-		// printf("Single pass scan: VALID result!\n\n");
+	// for (uint32_t i = 0; i < N; i++) {
+	// 	if (h_out[i] != h_ref[i]) {
+	// 		printf("!!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n"
+	// 		, i, h_out[i], h_ref[i]);
+	// 		exit(1);
+	// 	}
+	// }
+	// printf("Single pass scan: VALID result!\n\n");
 
     free(h_out);
-    // free(h_ref);
+    free(h_ref);
     cudaFree(IDAddr);
     cudaFree(flagArr);
     cudaFree(aggrArr);
@@ -272,13 +301,14 @@ int main (int argc, char * argv[]) {
     cudaMalloc((void**)&d_out,   mem_size);
 
     // initArray(h_in, N, 13);
-		for (uint32_t i = 0; i < N; i++) {
-			h_in[i] = 1;
-		}
+	for (uint32_t i = 0; i < N; i++) {
+		h_in[i] = 1;
+	}
     cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
  
     {
-			spsTests(N, h_in, d_in, d_out);
+		spsTests(N, h_in, d_in, d_out);
+		printf("finished testing sps\n");
     }
     // {
     //     singlePassScan(B, N, h_in, d_in, d_out);

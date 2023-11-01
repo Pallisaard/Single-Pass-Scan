@@ -3,8 +3,6 @@
 
 #include <cuda_runtime.h>
 
-#include "constants.cu.h"
-
 #define X 0
 #define A 1
 #define P 2
@@ -159,28 +157,36 @@ __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
 		int32_t agg_val = shr_mem[(Q - 1) * B + tid];
 		agg_mem[dyn_idx] = agg_val;
         pref_mem[dyn_idx] = agg_val;
+		// printf("dynID 0 sets pref to %d\n", agg_val);
         __threadfence();
         flag_mem[dyn_idx] = P;
-
     } else if (tid == B - 1 && dyn_idx > 0) {
 		int32_t agg_val = shr_mem[(Q - 1) * B + tid];
         agg_mem[dyn_idx] = agg_val;
         __threadfence();
         flag_mem[dyn_idx] = A;
-
+		__threadfence();
         int32_t grab_id = dyn_idx - 1;
         while (flag_mem[grab_id] != P) {
-            if (flag_mem[grab_id] == A && grab_id >= 0) {
+            if (flag_mem[grab_id] == A && grab_id > 0) {
+				// printf("dynID %d aggregates %d at %d\n", dyn_idx, agg_mem[grab_id], grab_id);
 				agg_val = agg_mem[grab_id] + agg_val;
+				// pref_mem[grab_id] = agg_val;
+				// __threadfence();
+				// flag_mem[grab_id] = P;
                 grab_id--;
             }
         }
-
-		pref_mem[dyn_idx] = agg_mem[dyn_idx] + pref_mem[grab_id];
+		__threadfence();
+		// printf("dynID %d gets pref %d at %d\n", dyn_idx, pref_mem[grab_id], grab_id);
+		pref_mem[dyn_idx] = agg_val + pref_mem[grab_id];
+		// printf("dynID %d sets pref to %d\n", dyn_idx, pref_mem[dyn_idx]);
         __threadfence();
         flag_mem[dyn_idx] = P;
     }
 
+	__threadfence();
+	__syncthreads();
 	int32_t prefix = pref_mem[dyn_idx] - agg_mem[dyn_idx];
 
 	__threadfence();  // it might work without
@@ -268,16 +274,16 @@ __device__ inline int32_t getDynID(int32_t* IDAddr, uint32_t tid) {
 	return retDynID;
 }
 
-/**
- * Naive memcpy kernel, for the purpose of comparing with
- * a more "realistic" bandwidth number.
- */
-__global__ void naiveMemcpy(int* d_out, int* d_inp, const uint32_t N) {
-    // uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
-    uint32_t gid = blockIdx.x * B + threadIdx.x;
-    if (gid < N) {
-        d_out[gid] = d_inp[gid];
-    }
+__global__ void glbShrMemcpy(int* d_out, int* d_inp, const uint32_t N)
+{
+	int32_t tid = threadIdx.x;
+	int32_t globaloffset = blockIdx.x * B * Q;
+	__syncthreads();
+	__shared__ int32_t blockShrMem[Q * B];
+	copyFromGlb2ShrMem(globaloffset, N, 0, d_inp, blockShrMem, tid);
+	__syncthreads();
+
+	copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
 	__syncthreads();
 }
 
@@ -290,9 +296,8 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 									  volatile uint32_t* flagArr,
 									  volatile int32_t* aggrArr,
 									  volatile int32_t* prefixArr) {
-	// Step 1 get a dynamic id
+	// Step 1 get ids and initialize global arrays
 	int32_t tid = threadIdx.x;
-	uint32_t num_blocks = gridDim.x;
 	int32_t dynID = getDynID(IDAddr, tid);
 	int32_t globaloffset = dynID * B * Q;
 	__syncthreads();
@@ -302,9 +307,9 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	volatile __shared__ int32_t blockShrBuf[B];
 	copyFromGlb2ShrMem(globaloffset, N, 0, d_in, blockShrMem, tid);
 
-	// #define testid 1
-	#ifdef testid
-	if (tid == 0 && dynID == testid) {
+	// #define testid2 2
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("glbMem initial\n");
 		for (int i = 0; i < N; i++) {
 			printf("%d ", d_in[i]);
@@ -312,7 +317,7 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 		printf("\n");
 	}
 
-	if (tid == 0 && dynID == testid) {
+	if (tid == 0 && dynID == testid2) {
 		printf("shrMem after load\n");
 		for (int i = 0; i < B * Q; i++) {
 			printf("%d ", blockShrMem[i]);
@@ -327,8 +332,8 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	// First scan each thread
 	threadScan(blockShrMem, blockShrBuf, tid);
 
-	#ifdef testid
-	if (tid == 0 && dynID == testid) {
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("shrBuf after thread scan\n");
 		for (int i = 0; i < B; i++) {
 			printf("%d ", blockShrBuf[i]);
@@ -341,8 +346,8 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	// Do the scan on the block level
 	blockScan(blockShrBuf, tid);
 
-	#ifdef testid
-	if (tid == 0 && dynID == testid) {
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("shrBuf after block scan\n");
 		for (int i = 0; i < B; i++) {
 			printf("%d ", blockShrBuf[i]);
@@ -355,8 +360,8 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	// Save the result in shrmem.
 	threadAdd(blockShrMem, blockShrBuf, tid);
 
-	#ifdef testid
-	if (tid == 0 && dynID == testid) {
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("shrMem after thread add\n");
 		for (int i = 0; i < Q * B; i++) {
 			printf("%d ", blockShrMem[i]);
@@ -369,11 +374,15 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	// Step 4 use lookback scan to find the inclusive prefix value
 	int32_t prefix = lookbackScan(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
 
+	// if (tid == 0) {
+	// 	printf("dynID: %d, tid: %d, prefix: %d\n", dynID, tid, prefix);
+	// }
+
 	// Step 5 Sum the prefix into the scan
 	threadAddVal(blockShrMem, prefix, tid, dynID);
 
-	#ifdef testid
-	if (tid == 0 && dynID == testid) {
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("shrMem after thread add val\n");
 		for (int i = 0; i < Q * B; i++) {
 			printf("%d ", blockShrMem[i]);
@@ -387,8 +396,8 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 
 	copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
 
-	#ifdef testid
-	if (tid == 0 && dynID == testid) {
+	#ifdef testid2
+	if (tid == 0 && dynID == testid2) {
 		printf("glbMem final after load\n");
 		for (int i = 0; i < N; i++) {
 			printf("%d ", d_out[i]);
@@ -398,6 +407,8 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	__syncthreads();
 	#endif
 
+	__threadfence();
+	__syncthreads();
 }
 
 /**
@@ -434,7 +445,6 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
             aggrArr[counter] = prefix;
             __threadfence();
             flagArr[counter] = P;
-            __threadfence();
 			// printf("flagArr:\n");
 			// for (int i = 0; i < 25; i++) {
 			// 	printf("%d ", flagArr[i]);
@@ -452,10 +462,9 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
         copyFromGlb2ShrMem(globaloffset, N, 0, d_in, blockShrMem, tid);
 
         // __threadfence();
-        // #define testid 1
-		__syncthreads();
+        // #define testid1 1
 
-		#ifdef testid
+		#ifdef testid1
         if (tid == 0 && dynID == testid) {
             printf("glbMem before load\n");
             for (int i = 0; i < B * Q; i++) {
@@ -471,15 +480,14 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
             }
             printf("\n");
         }
+        __syncthreads();
 		#endif
 
-        __syncthreads();
 
         // Step 3 Do the scan on the block
         // First scan each thread
         threadScan(blockShrMem, blockShrBuf, tid);
-		__syncthreads();
-		#ifdef testid
+		#ifdef testid1
         if (tid == 0 && dynID == testid) {
             printf("shrBuf after thread scan\n");
             for (int i = 0; i < B; i++) {
@@ -492,9 +500,8 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
 
         // Do the scan on the block level
         blockScan(blockShrBuf, tid);
-        __syncthreads();
 
-		#ifdef testid
+		#ifdef testid1
         if (tid == 0 && dynID == testid) {
             printf("shrBuf after block scan\n");
             for (int i = 0; i < B; i++) {
@@ -507,10 +514,8 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
 
         // Save the result in shrmem.
         threadAdd(blockShrMem, blockShrBuf, tid);
-		// __threadfence();
-		__syncthreads();
 
-		#ifdef testid
+		#ifdef testid1
         if (tid == 0 && dynID == testid) {
             printf("shrMem after thread add\n");
             for (int i = 0; i < Q * B; i++) {
@@ -535,7 +540,6 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
             // printf("%d\n", dynID);
         }
         // Let block 0 calculate the prefix, we wait for it.
-		__syncthreads();
         // printf("dynid == %d - flagArr[%d] == %d - aggrArr[%d] == %d\n", dynID, dynID, flagArr[dynID], dynID, aggrArr[dynID]);
         
         // Step 5 calculate prefixArr value, might block or wait.
@@ -553,8 +557,7 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
         // Step 7 Sum the prefix into the scan
 
         threadAddVal(blockShrMem, prefix, tid, dynID);
-        __syncthreads();
-		#ifdef testid
+		#ifdef testid1
         if (tid == 0 && dynID == testid) {
             printf("shrMem after thread add val\n");
             for (int i = 0; i < Q * B; i++) {
@@ -569,8 +572,7 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
 
         copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
 
-        __syncthreads();
-		#ifdef testid
+		#ifdef testid1
         if (tid == 0 && dynID == testid) {
             printf("glbMem final after load\n");
             for (int i = 0; i < N; i++) {
@@ -578,12 +580,10 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
             }
             printf("\n");
         }
+        __syncthreads();
 		#endif
 
     }
-	// if (tid == 0) {
-	// 	printf("dyn block %d done\n", dynID);
-	// }
     // Step 9 Die!
 }
 
