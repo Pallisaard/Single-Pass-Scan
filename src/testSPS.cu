@@ -483,7 +483,7 @@ int scanIncAddI32(const uint32_t b_size, const size_t N, int* h_in,
     gettimeofday(&t_end, NULL);
     timeval_subtract(&t_diff, &t_end, &t_start);
     elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec) / RUNS_GPU;
-    double gigaBytesPerSec = N  * (2*sizeof(int) + sizeof(int)) * 1.0e-3f / elapsed;
+    double gigaBytesPerSec = N  * 2 * sizeof(int32_t) * 1.0e-3f / elapsed;
     printf("Scan Inclusive AddI32 GPU11 Kernel runs in: %lu microsecs, GB/sec: %.2f\n"
           , elapsed, gigaBytesPerSec);
 

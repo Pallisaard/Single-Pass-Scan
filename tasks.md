@@ -2,11 +2,11 @@
 
 ## Implementation
 
-- [ ] Remove all unnecessary code from the project.
-  - [ ] stupid prints left by Rasmus.
-  - [ ] General cleanup.
-- [ ] Change benchmarks assumptions to fit with our golden algorithm.
-  - [ ] Set number of read/writes in GPU inclusive scan to 2.
+- [x] Remove all unnecessary code from the project.
+  - [x] stupid prints left by Rasmus.
+  - [x] General cleanup.
+- [x] Change benchmarks assumptions to fit with our golden algorithm.
+  - [x] Set number of read/writes in GPU inclusive scan to 2.
 - [ ] Change lookback scan to use multiple threads scan for better performance.
   - [ ] Change lookback scan to use `WARP` number of threads for can.
   - [ ] Change lookback scan to use `BLOCKSIZE` number of threads for scan.
