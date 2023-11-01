@@ -216,10 +216,10 @@ __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
  *   in global memory, but making sure that consecutive threads
  *   read consecutive elements of `d_inp` in a SIMD instruction.
  **/
-__device__ inline void copyFromGlb2ShrMem(int32_t glb_offs, const uint32_t N,
-                                          int32_t ne, int32_t* d_inp,
-                                          volatile int32_t* shmem_inp,
-                                          uint32_t tid) {
+__device__ inline void copyGlb2Shr(int32_t glb_offs, const uint32_t N,
+									int32_t ne, int32_t* d_inp,
+									volatile int32_t* shmem_inp,
+									uint32_t tid) {
 #pragma unroll
     for (uint32_t i = 0; i < Q; i++) {
         // uint32_t loc_ind = blockDim.x * i + tid;
@@ -235,7 +235,7 @@ __device__ inline void copyFromGlb2ShrMem(int32_t glb_offs, const uint32_t N,
 }
 
 /**
- * This is very similar with `copyFromGlb2ShrMem` except
+ * This is very similar with `copyGlb2Shr` except
  * that you need to copy from shared to global memory, so
  * that consecutive threads write consecutive indices in
  * global memory in the same SIMD instruction.
@@ -246,10 +246,10 @@ __device__ inline void copyFromGlb2ShrMem(int32_t glb_offs, const uint32_t N,
  * `shmem_red` is the shared-memory of size
  *    `blockDim.x*Q*sizeof(T)`
  */
-__device__ inline void copyFromShr2GlbMem(int32_t glb_offs, const uint32_t N,
-                                          int32_t* d_out,
-                                          int32_t* shmem_red,
-                                          uint32_t tid) {
+__device__ inline void copyShr2Glb(int32_t glb_offs, const uint32_t N,
+									int32_t* d_out,
+									int32_t* shmem_red,
+									uint32_t tid) {
 #pragma unroll
     for (uint32_t i = 0; i < Q; i++) {
         // uint32_t loc_ind = blockDim.x * i + tid;
@@ -278,13 +278,10 @@ __global__ void glbShrMemcpy(int* d_out, int* d_inp, const uint32_t N)
 {
 	int32_t tid = threadIdx.x;
 	int32_t globaloffset = blockIdx.x * B * Q;
-	__syncthreads();
 	__shared__ int32_t blockShrMem[Q * B];
-	copyFromGlb2ShrMem(globaloffset, N, 0, d_inp, blockShrMem, tid);
-	__syncthreads();
+	copyGlb2Shr(globaloffset, N, 0, d_inp, blockShrMem, tid);
 
-	copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
-	__syncthreads();
+	copyShr2Glb(globaloffset, N, d_out, blockShrMem, tid);
 }
 
 /**
@@ -296,20 +293,21 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 									  volatile uint32_t* flagArr,
 									  volatile int32_t* aggrArr,
 									  volatile int32_t* prefixArr) {
+
+	// Allocate shared memory
+	__shared__ int32_t blockShrMem[Q * B];
+	volatile __shared__ int32_t blockShrBuf[B];
 	// Step 1 get ids and initialize global arrays
 	int32_t tid = threadIdx.x;
 	int32_t dynID = getDynID(IDAddr, tid);
 	int32_t globaloffset = dynID * B * Q;
-	__syncthreads();
 
 	// Step 2 copy the memory the block will scan into shared memory.
-	__shared__ int32_t blockShrMem[Q * B];
-	volatile __shared__ int32_t blockShrBuf[B];
-	copyFromGlb2ShrMem(globaloffset, N, 0, d_in, blockShrMem, tid);
+	copyGlb2Shr(globaloffset, N, 0, d_in, blockShrMem, tid);
 
-	// #define testid2 2
-	#ifdef testid2
-	if (tid == 0 && dynID == testid2) {
+// #define testid2 2
+#ifdef testid2
+if (tid == 0 && dynID == testid2) {
 		printf("glbMem initial\n");
 		for (int i = 0; i < N; i++) {
 			printf("%d ", d_in[i]);
@@ -394,7 +392,7 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 
 	// Step 6 Copy the result into global memory
 
-	copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
+	copyShr2Glb(globaloffset, N, d_out, blockShrMem, tid);
 
 	#ifdef testid2
 	if (tid == 0 && dynID == testid2) {
@@ -406,9 +404,6 @@ __global__ void SinglePassScanKernel2(int32_t *d_in, int32_t* d_out,
 	}
 	__syncthreads();
 	#endif
-
-	__threadfence();
-	__syncthreads();
 }
 
 /**
@@ -459,10 +454,10 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
         // Step 2 copy the memory the block will scan into shared memory.
 		__shared__ int32_t blockShrMem[Q * B];
         volatile __shared__ int32_t blockShrBuf[B];
-        copyFromGlb2ShrMem(globaloffset, N, 0, d_in, blockShrMem, tid);
+        copyGlb2Shr(globaloffset, N, 0, d_in, blockShrMem, tid);
 
-        // __threadfence();
-        // #define testid1 1
+
+		// #define testid1 1
 
 		#ifdef testid1
         if (tid == 0 && dynID == testid) {
@@ -570,7 +565,7 @@ __global__ void SinglePassScanKernel1(int32_t* d_in, int32_t* d_out,
 
         // Step 8 Copy the result into global memory
 
-        copyFromShr2GlbMem(globaloffset, N, d_out, blockShrMem, tid);
+        copyShr2Glb(globaloffset, N, d_out, blockShrMem, tid);
 
 		#ifdef testid1
         if (tid == 0 && dynID == testid) {
