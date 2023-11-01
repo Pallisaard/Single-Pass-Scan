@@ -10,6 +10,7 @@
 - [ ] Change lookback scan to use multiple threads scan for better performance.
   - [ ] Change lookback scan to use `WARP` number of threads for can.
   - [ ] Change lookback scan to use `BLOCKSIZE` number of threads for scan.
+- [ ] Optimise lookback scan to use less global reads.
 - [ ] Implement templates for variadic types.
   - [ ] Write kernel tests for a `float32` version.
   - [ ] Write kernel tests for a `(int32, int32, int32, int32)`.
