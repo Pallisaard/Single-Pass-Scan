@@ -182,42 +182,6 @@ __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
 
     return prefix;
 }
-// device function for a lookback scan method.
-// __device__ inline int32_t fenceFreeLookbackScan(volatile int64_t* agg_mem,
-// 									   			int32_t* shr_mem, uint32_t dyn_idx,
-// 									   			uint32_t tid, int32_t val) {
-
-// 	// int32_t agg_val = shr_mem[(Q - 1) * B + tid];
-// 	// Handle lookback differently depending on dynamic id.
-//     if (tid == B - 1 && dyn_idx == 0) {
-// 		int32_t pref_elem = shr_mem[(Q - 1) * B + tid];
-// 		int64_t agg_flag_comp = (int64_t)(pref_elem) << 32 | P;
-// 		agg_mem[dyn_idx] = agg_flag_comp;
-
-//     } else if (dyn_idx > 0) {
-// 		int32_t pref_elem = shr_mem[(Q - 1) * B + tid];
-// 		int32_t agg_val = 0;
-// 		int64_t agg_flag_comp = (int64_t)(agg_val) << 32 | A;
-//         agg_mem[dyn_idx] = agg_flag_comp;
-//         int32_t grab_id = dyn_idx - 1;
-// 		while (0x != (agg_mem[grab_id] & 0x00000000FFFFFFFF) && grab_id > 0) {
-// 			if (0x != (agg_mem[grab_id] & 0x00000000FFFFFFFF) && grab_id > 0) {
-// 				agg_val = (agg_mem[grab_id] >> 32) + agg_val;
-// 				grab_id--:
-//             }
-//         }
-// 		agg_val = agg_val + agg_mem[grab_id] >> 32;
-// 		int32_t inc_prefix = agg_val + pref_elem;
-// 		agg_mem[dyn_idx] = (int64_t)(inc_prefix) << 32 | P;
-//     }
-
-// 	__syncthreads();
-// 	if (dyn_idx == 0)
-// 		return 0;
-
-// 	int32_t prefix = int32_t(agg_val >> 32);
-//     return prefix;
-// }
 
 /**
  * Helper function that copies `Q` input elements per thread from
