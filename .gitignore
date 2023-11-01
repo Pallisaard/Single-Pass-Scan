@@ -5,3 +5,5 @@
 *.cubin
 *.fatbin
 test-sps
+test-f
+test-table
