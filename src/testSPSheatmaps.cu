@@ -4,6 +4,9 @@
 #include <math.h>
 #include "hostSkel.cu.h"
 
+#ifndef INCLUDE_QUAD
+#define INCLUDE_QUAD 0
+#endif
 
 // Initialize an array of int32_t with random values between -R and R.
 // Array has length N.
@@ -36,6 +39,20 @@ void initArrayQuadInt32(Quad<int32_t>* inp_arr, const uint32_t N, const int R) {
         inp_arr[i].z = (rand() % M) - R;
         inp_arr[i].w = (rand() % M) - R;
     }
+}
+
+int neq(int32_t a, int32_t b) {
+	return a != b;
+}
+
+int neq(float a, float b) {
+	printf("float version used\n");
+	printf("a: %f, b: %f, diff: %f\n", a, b, fabs(a - b));
+	return fabs(a - b) > 1.0e-4f;
+}
+
+int neq(Quad<int32_t> a, Quad<int32_t> b) {
+	return a.x != b.x || a.y != b.y || a.z != b.z || a.w != b.w;
 }
 
 /**
@@ -188,7 +205,7 @@ int singlePassScanAuxBlock(const size_t N, T* h_in,
     { // Validation
         cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
         for(uint32_t i = 0; i<N; i++) {
-            if(h_out[i] != h_ref[i]) {
+            if(neq(h_out[i], h_ref[i])) {
                 printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
 				       i, h_out[i], h_ref[i]);
                 exit(1);
@@ -252,8 +269,8 @@ int singlePassScanLookback(const size_t N, T* h_in,
         for(int i=0; i<RUNS_GPU; i++) {
             cudaMemset(IDAddr, 0, sizeof(int32_t));
             cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
-            cudaMemset(aggrArr, 0, f_array_size * sizeof(T));
-            cudaMemset(prefixArr, 0, f_array_size * sizeof(T));
+            cudaMemset(aggrArr, 0.0, f_array_size * sizeof(T));
+            cudaMemset(prefixArr, 0.0, f_array_size * sizeof(T));
             SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
         }
         cudaDeviceSynchronize();
@@ -262,32 +279,9 @@ int singlePassScanLookback(const size_t N, T* h_in,
         elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
         elapsed = elapsed / RUNS_GPU;
         double gigaBytesPerSec = N  * 2 * sizeof(T) * 1.0e-3f / elapsed;
-        printf("- Single Pass Scan using lookback runs in: %lu microsecs, GB/sec: %.2f\n",
-		       elapsed, gigaBytesPerSec);
+        printf("%.2f", gigaBytesPerSec);
     }
     gpuAssert( cudaPeekAtLastError() );
-
-    // The CPU we might as well just add the benchmark
-    { // sequential computation
-        int32_t acc = 0;
-        for(uint32_t i=0; i<N; i++) {
-            acc = h_in[i] + acc;
-            h_ref[i] = acc;
-        }
-        cudaDeviceSynchronize();
-    }
-
-    { // Validation
-        cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
-        for(uint32_t i = 0; i<N; i++) {
-            if(h_out[i] != h_ref[i]) {
-                printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
-				       i, h_out[i], h_ref[i]);
-                exit(1);
-            }
-        }
-        printf("  - Single pass scan using lookback: VALID result!\n");
-    }
 
 	free(h_out);
     free(h_ref);
@@ -390,7 +384,7 @@ int scanIncAdd(const uint32_t b_size, const size_t N, T* h_in,
     { // sequential computation
 		T acc = T();
 		for(uint32_t i=0; i<N; i++) {
-			acc += h_in[i];
+			acc = acc + h_in[i];
 			h_ref[i] = acc;
 		}
     }
@@ -398,7 +392,7 @@ int scanIncAdd(const uint32_t b_size, const size_t N, T* h_in,
     { // Validation
         cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
         for(uint32_t i = 0; i<N; i++) {
-            if(h_out[i] != h_ref[i]) {
+            if(neq(h_out[i], h_ref[i])) {
                 printf("  - !!!INVALID!!!: Scan Inclusive AddI32 at index %d, dev-val: %d, host-val: %d\n",
 				       i, h_out[i], h_ref[i]);
                 exit(1);
@@ -422,21 +416,11 @@ int i32Experiments(const uint32_t N) {
     cudaMalloc((void**)&d_in ,   mem_size);
     cudaMalloc((void**)&d_out,   mem_size);
 
-	printf("Computing experiments with type: int32_t\n");
     initArrayInt32(h_in, N, 13);
 	cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
 
     // Scan experiments.
-    {
-		// computing a "realistic/achievable" bandwidth figure
-		bandwidthCudaMemcpy<int32_t>(N, d_in, d_out);
-		bandwidthMemcpy<int32_t>(N, d_in, d_out);
-		// Scan experiments.
-        cpuSeqScan<int32_t>(N, h_in, d_in, d_out);
-        singlePassScanAuxBlock<int32_t>(N, h_in, d_in, d_out);
-        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out);
-		scanIncAdd<int32_t>(B, N, h_in, d_in, d_out);
-    }
+	singlePassScanLookback<int32_t>(N, h_in, d_in, d_out);
 
     // cleanup memory
     free(h_in);
@@ -446,28 +430,30 @@ int i32Experiments(const uint32_t N) {
 	return 0;
 }
 
-int floatExperiments(const uint32_t N) {
-	const size_t mem_size = N*sizeof(float);
-	float* h_in    = (float*) malloc(mem_size);
-	float* d_in;
-	float* d_out;
+#if INCLUDE_QUAD == 1
+int quadInt32Experiments(const uint32_t N) {
+	const size_t mem_size = N*sizeof(Quad<int32_t>);
+	Quad<int32_t>* h_in    = (Quad<int32_t>*) malloc(mem_size);
+	Quad<int32_t>* d_in;
+	Quad<int32_t>* d_out;
 	cudaMalloc((void**)&d_in ,   mem_size);
 	cudaMalloc((void**)&d_out,   mem_size);
 
-	printf("Computing experiments with type: float\n");
-	initArrayFloat(h_in, N, 13.0f);
+	// printf("Computing experiments with type: Quad<int32_t>\n");
+	initArrayQuadInt32(h_in, N, 13);
 	cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
 
 	// Scan experiments.
 	{
 		// computing a "realistic/achievable" bandwidth figure
-		bandwidthCudaMemcpy<float>(N, d_in, d_out);
-		bandwidthMemcpy<float>(N, d_in, d_out);
+		// bandwidthCudaMemcpy<Quad<int32_t>>(N, d_in, d_out);
+		// bandwidthMemcpy<Quad<int32_t>>(N, d_in, d_out);
+		// bandwidthGlgShrMemcpyInt32(N, h_in, d_in, d_out);
 		// Scan experiments.
-		cpuSeqScan<float>(N, h_in, d_in, d_out);
-		singlePassScanAuxBlock<float>(N, h_in, d_in, d_out);
-		singlePassScanLookback<float>(N, h_in, d_in, d_out);
-		scanIncAdd<float>(B, N, h_in, d_in, d_out);
+		// cpuSeqScan<Quad<int32_t>>(N, h_in, d_in, d_out);
+		// singlePassScanAuxBlock<Quad<int32_t>>(N, h_in, d_in, d_out);
+		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out);
+		// scanIncAdd<Quad<int32_t>>(B, N, h_in, d_in, d_out);
 	}
 
 	// cleanup memory
@@ -477,63 +463,31 @@ int floatExperiments(const uint32_t N) {
 
 	return 0;
 }
-
-// int quadInt32Experiments(const uint32_t N) {
-// 	const size_t mem_size = N*sizeof(Quad<int32_t>);
-// 	Quad<int32_t>* h_in    = (Quad<int32_t>*) malloc(mem_size);
-// 	Quad<int32_t>* d_in;
-// 	Quad<int32_t>* d_out;
-// 	cudaMalloc((void**)&d_in ,   mem_size);
-// 	cudaMalloc((void**)&d_out,   mem_size);
-
-// 	printf("Computing experiments with type: Quad<int32_t>\n");
-// 	initArrayQuadInt32(h_in, N, 13);
-// 	cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
-
-// 	// Scan experiments.
-// 	{
-// 		// computing a "realistic/achievable" bandwidth figure
-// 		bandwidthCudaMemcpy<Quad<int32_t>>(N, d_in, d_out);
-// 		bandwidthCudaMemcpy<Quad<int32_t>>(N, d_in, d_out);
-// 		bandwidthMemcpy<Quad<int32_t>>(N, d_in, d_out);
-// 		bandwidthMemcpy<Quad<int32_t>>(N, d_in, d_out);
-// 		// bandwidthGlgShrMemcpyInt32(N, h_in, d_in, d_out);
-// 		// Scan experiments.
-// 		cpuSeqScan<Quad<int32_t>>(N, h_in, d_in, d_out);
-// 		cpuSeqScan<Quad<int32_t>>(N, h_in, d_in, d_out);
-// 		singlePassScanAuxBlock<Quad<int32_t>>(N, h_in, d_in, d_out);
-// 		singlePassScanAuxBlock<Quad<int32_t>>(N, h_in, d_in, d_out);
-// 		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out);
-// 		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out);
-// 		scanIncAdd<Quad<int32_t>>(B, N, h_in, d_in, d_out);
-// 		scanIncAdd<Quad<int32_t>>(B, N, h_in, d_in, d_out);
-// 	}
-
-// 	// cleanup memory
-// 	free(h_in);
-// 	cudaFree(d_in);
-// 	cudaFree(d_out);
-
-// 	return 0;
-// }
+#endif
 
 
 int main (int argc, char * argv[]) {
-    if (argc != 2) {
-        printf("Usage: %s <array-length>\n", argv[0]);
+    if (argc != 1) {
+        printf("Usage: %s\n", argv[0]);
         exit(1);
     }
 
+	if (B == 512 && Q > 20)
+		return 0;
+	if (B == 1024 && Q > 10)
+		return 0;
+
     initHwd();
 
-    const uint32_t N = atoi(argv[1]);
+	printf("Q: %d\n", Q);
 
-    printf("Testing parallel basic blocks for input length: %d and CUDA-block size: %d and Q: %d\n\n\n", N, B, Q);
-
-	i32Experiments(N);
-	// floatExperiments(N);
-	// quadInt32Experiments(N);
-
+	for (uint32_t i = 10; i < 31; i++) {
+		uint32_t N = 2 << i;
+		printf("i: %d - ", i);
+		i32Experiments(N);
+		printf("\n");
+	}
+	printf("\n");
 	return 0;
 
 }
