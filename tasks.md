@@ -20,7 +20,7 @@
 
 ## Report
 
-- [ ] Create overleaf document.
+- [x] Create overleaf document.
 - [ ] Create benchmark code in python to compare performance of different implementations.
   - [ ] Plot GB/s over N where N = 2^x for x in [10,30].
   - [ ] For the best model, plot heatmap of GB/s for different combinations of Q, B and N:
