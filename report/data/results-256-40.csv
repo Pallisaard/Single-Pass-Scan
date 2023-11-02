@@ -1,4 +1,4 @@
-N (2^),naiveMemcpy,registerMemcpy,glbShrMemcpy,scanIncAddI32,singlePassScanAuxBlock,singlePassScanLookback
+N (2^),naiveMemcpy,registerMemcpy,glbShrMemcpy,scanIncAddI32,scanIncCPU,singlePassScanAuxBlock,singlePassScanLookback
 10,2.05,1.37,1.37,1.64,inf,0.23,0.24
 11,4.10,2.73,2.73,3.28,16.38,0.48,0.50
 12,8.19,5.46,5.46,6.55,10.92,0.96,0.96
