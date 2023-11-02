@@ -186,15 +186,15 @@ int singlePassScanAuxBlock(const size_t N, T* h_in,
     }
 
     { // Validation
-        // cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
-        // for(uint32_t i = 0; i<N; i++) {
-        //     if(h_out[i] != h_ref[i]) {
-        //         printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
-		// 		       i, h_out[i], h_ref[i]);
-        //         exit(1);
-        //     }
-        // }
-        // printf("  - Single pass scan using aux block: VALID result!\n");
+        cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+        for(uint32_t i = 0; i<N; i++) {
+            if(h_out[i] != h_ref[i]) {
+                printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
+				       i, h_out[i], h_ref[i]);
+                exit(1);
+            }
+        }
+        printf("  - Single pass scan using aux block: VALID result!\n");
     }
 
 	free(h_out);
@@ -278,15 +278,15 @@ int singlePassScanLookback(const size_t N, T* h_in,
     }
 
     { // Validation
-        // cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
-        // for(uint32_t i = 0; i<N; i++) {
-        //     if(h_out[i] != h_ref[i]) {
-        //         printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
-		// 		       i, h_out[i], h_ref[i]);
-        //         exit(1);
-        //     }
-        // }
-        // printf("  - Single pass scan using lookback: VALID result!\n");
+        cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+        for(uint32_t i = 0; i<N; i++) {
+            if(h_out[i] != h_ref[i]) {
+                printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
+				       i, h_out[i], h_ref[i]);
+                exit(1);
+            }
+        }
+        printf("  - Single pass scan using lookback: VALID result!\n");
     }
 
 	free(h_out);
@@ -398,7 +398,7 @@ int scanIncAdd(const uint32_t b_size, const size_t N, T* h_in,
     { // Validation
         cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
         for(uint32_t i = 0; i<N; i++) {
-            if(h_out[i] = h_ref[i]) {
+            if(h_out[i] != h_ref[i]) {
                 printf("  - !!!INVALID!!!: Scan Inclusive AddI32 at index %d, dev-val: %d, host-val: %d\n",
 				       i, h_out[i], h_ref[i]);
                 exit(1);
@@ -531,7 +531,7 @@ int main (int argc, char * argv[]) {
     printf("Testing parallel basic blocks for input length: %d and CUDA-block size: %d and Q: %d\n\n\n", N, B, Q);
 
 	i32Experiments(N);
-	floatExperiments(N);
+	// floatExperiments(N);
 	// quadInt32Experiments(N);
 
 	return 0;
