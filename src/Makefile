@@ -3,6 +3,7 @@ OPT_FLAGS?=-O3
 
 BB=256 # base: 1024
 QQ=30 # base: 10
+VERSION=0 # 0 = int32, 1 = Quad<int32>, 2 = float (bad)
 
 #-arch=compute_35
 # NOTE COMPARE WITH VOLATILE OFF AND REMEMBER TO

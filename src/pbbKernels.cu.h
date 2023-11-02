@@ -24,9 +24,9 @@ class Add {
 	typedef T InpElTp;
 	typedef T RedElTp;
 	static const bool commutative = true;
-	static __device__ __host__ inline T identInp() { return (T)0; }
+	static __device__ __host__ inline T identInp() { return T(); }
 	static __device__ __host__ inline T mapFun(const T& el) { return el; }
-	static __device__ __host__ inline T identity() { return (T)0; }
+	static __device__ __host__ inline T identity() { return T(); }
 	static __device__ __host__ inline T apply(const T t1, const T t2) { return t1 + t2; }
 
 	static __device__ __host__ inline bool equals(const T t1, const T t2) { return (t1 == t2); }

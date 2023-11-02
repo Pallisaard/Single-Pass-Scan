@@ -28,28 +28,55 @@ public:
 									const T& z, const T& w)
 									: x(x), y(y), z(z), w(w) {}
 
-	__device__ __host__ inline Quad(const Quad<T>& q) : x(q.x), y(q.y), z(q.z), w(q.w) {}
+	__device__ __host__ inline Quad<T>(const Quad<T>& q) : x(q.x), y(q.y), z(q.z), w(q.w) {}
 
-	__device__ __host__ inline Quad<T> operator=(const Quad<T>& q) {
+    __device__ __host__ inline Quad<T>(const volatile Quad<T>& q) : x(q.x), y(q.y), z(q.z), w(q.w) {}
+
+    __device__ __host__ inline Quad<T>& operator=(const volatile Quad<T>& q) {
+        x = q.x;
+        y = q.y;
+        z = q.z;
+        w = q.w;
+        return *this;
+    }
+
+    __device__ __host__ inline volatile Quad<T>& operator=(const Quad<T>& q) volatile {
+        x = q.x;
+        y = q.y;
+        z = q.z;
+        w = q.w;
+        return *this;
+    }
+
+	__device__ __host__ inline Quad<T>& operator=(const Quad<T>& q) {
 		x = q.x;
 		y = q.y;
 		z = q.z;
 		w = q.w;
+		return *this;
 	}
 
 	__device__ __host__ inline Quad<T> operator+(const Quad<T>& q) {
 		return Quad<T>(x + q.x, y + q.y, z + q.z, w + q.w);
 	}
+
+	__device__ __host__ inline Quad<T> operator+(const volatile Quad<T>& q) const volatile {
+        return Quad<T>(x + q.x, y + q.y, z + q.z, w + q.w);
+    }
+
+	__device__ __host__ inline Quad<T> operator-(const volatile Quad<T>& q) const volatile {
+        return Quad<T>(x - q.x, y - q.y, z - q.z, w - q.w);
+    }
 };
 
 // shd_mem is a pointer to an array in shared memory. It has size Q * B.
 // idx is the id of the part of the shared memory we start scanning.
 template<typename T>
 __device__ inline void threadScan(T* shd_mem, volatile T* shd_buf, uint32_t tid) {
-    T acc = 0;
+    T acc = T();
 #pragma unroll
     for (int i = 0; i < Q; i++) {
-        int tmp = shd_mem[tid * Q + i];
+        T tmp = shd_mem[tid * Q + i];
         acc = acc + tmp;
         shd_mem[tid * Q + i] = acc;
     }
@@ -207,7 +234,7 @@ __device__ inline T lookbackScan(volatile T* agg_mem,
  *   read consecutive elements of `d_inp` in a SIMD instruction.
  **/
 template<typename T>
-__device__ inline void copyGlb2Shr(T glb_offs, const uint32_t N,
+__device__ inline void copyGlb2Shr(uint32_t glb_offs, const uint32_t N,
 								   T ne, T* d_inp,
 								   volatile T* shmem_inp,
 								   uint32_t tid) {
@@ -215,7 +242,7 @@ __device__ inline void copyGlb2Shr(T glb_offs, const uint32_t N,
     for (uint32_t i = 0; i < Q; i++) {
         uint32_t loc_ind = blockDim.x * i + tid;
         uint32_t glb_ind = glb_offs + loc_ind;
-        uint32_t elm = ne;
+        T elm = ne;
         if (glb_ind < N) {
             elm = d_inp[glb_ind];
         }
@@ -237,7 +264,7 @@ __device__ inline void copyGlb2Shr(T glb_offs, const uint32_t N,
  *    `blockDim.x*Q*sizeof(T)`
  */
 template<typename T>
-__device__ inline void copyShr2Glb(T glb_offs, const uint32_t N,
+__device__ inline void copyShr2Glb(uint32_t glb_offs, const uint32_t N,
 								   T* d_out,
 								   T* shmem_red,
 								   uint32_t tid) {
@@ -246,7 +273,7 @@ __device__ inline void copyShr2Glb(T glb_offs, const uint32_t N,
         uint32_t loc_ind = B * i + tid;
         uint32_t glb_ind = glb_offs + loc_ind;
         if (glb_ind < N) {
-            uint32_t elm = (shmem_red[loc_ind]);
+            T elm = (shmem_red[loc_ind]);
             d_out[glb_ind] = elm;
         }
     }
@@ -295,7 +322,7 @@ __global__ void SinglePassScanKernel2(T *d_in, T* d_out,
 	uint32_t globaloffset = dynID * B * Q;
 
 	// Step 2 copy the memory the block will scan into shared memory.
-	copyGlb2Shr<T>(globaloffset, N, 0, d_in, blockShrMem, tid);
+	copyGlb2Shr<T>(globaloffset, N, T(), d_in, blockShrMem, tid);
 
 	// Step 3 Do the scan on the block
 	// First scan each thread
@@ -337,11 +364,11 @@ __global__ void SinglePassScanKernel1(T* d_in, T* d_out,
     // an optimisation might be to let id 0 do it, but it still calculates the
     // first block.
     if (dynID < 0 && tid == 0) {
-        int32_t prefix = 0;
+        T prefix = T();
         for (uint32_t counter = 0; counter < num_blocks - 1; counter++) {  // 1 block is aux block
 			while (flagArr[counter] == X) {}
             // Flag should be A
-            int32_t tmp = aggrArr[counter];
+            T tmp = aggrArr[counter];
             prefix = prefix + tmp;
             aggrArr[counter] = prefix;
             __threadfence();
@@ -350,12 +377,12 @@ __global__ void SinglePassScanKernel1(T* d_in, T* d_out,
     } else if (dynID >= 0) {
 
         // Step 1.5 calculate some id's and stuff we will use
-        int32_t globaloffset = dynID * B * Q;
+        uint32_t globaloffset = dynID * B * Q;
 
         // Step 2 copy the memory the block will scan into shared memory.
 		__shared__ T blockShrMem[Q * B];
         volatile __shared__ T blockShrBuf[B];
-        copyGlb2Shr<T>(globaloffset, N, 0, d_in, blockShrMem, tid);
+        copyGlb2Shr<T>(globaloffset, N, T(), d_in, blockShrMem, tid);
 
         // Step 3 Do the scan on the block
         // First scan each thread
@@ -369,7 +396,7 @@ __global__ void SinglePassScanKernel1(T* d_in, T* d_out,
 
         // Step 4 Update aggregate array
         if (tid == B - 1 && dynID < num_blocks - 1) {
-            int32_t res = blockShrMem[(Q - 1) * B + tid];
+            T res = blockShrMem[(Q - 1) * B + tid];
             aggrArr[dynID] = res;
             __threadfence();
             flagArr[dynID] = A;
@@ -378,7 +405,7 @@ __global__ void SinglePassScanKernel1(T* d_in, T* d_out,
         // Let block 0 calculate the prefix, we wait for it.
         while (flagArr[dynID] != P) {}
 
-		int32_t prefix = 0;
+		T prefix = T();
 		if (dynID > 0) {
 	        prefix = aggrArr[dynID - 1];
 		}
