@@ -2,7 +2,8 @@ COMPILER?=nvcc
 OPT_FLAGS?=-O3 
 
 BB=256 # base: 1024
-QQ=32 # base: 10
+QQ=30 # base: 10
+VERSION=0 # 0 = int32, 1 = Quad<int32>, 2 = float (bad)
 
 #-arch=compute_35
 # NOTE COMPARE WITH VOLATILE OFF AND REMEMBER TO
@@ -22,13 +23,13 @@ default: compile run
 
 compile: $(TEST_SPS)
 
-$(TEST_SPS): testSPS.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
+$(TEST_SPS): testSPS.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h spsKernels.cu.h
 	$(COMPILER) $(OPT_FLAGS)  -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) testSPS.cu
 
-$(TEST_F): testSPSFunctions.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
+$(TEST_F): testSPSFunctions.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h spsKernels.cu.h
 	$(COMPILER) $(OPT_FLAGS) -o $(TEST_F) -D B=$(BB) -D Q=$(QQ) testSPSFunctions.cu
 
-$(TEST_TABLE): testSPStable.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h sps.cu.h
+$(TEST_TABLE): testSPStable.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h spsKernels.cu.h
 	$(COMPILER) $(OPT_FLAGS) -o $(TEST_TABLE) -D B=$(BB) -D Q=$(QQ) testSPStable.cu
 
 all: $(TEST_SPS)

@@ -14,38 +14,6 @@
 #endif
 
 /**
- * Naive memcpy kernel, for the purpose of comparing with
- * a more "realistic" bandwidth number.
- */
-__global__ void naiveMemcpy(int* d_out, int* d_inp, const uint32_t N)
-{
-	uint32_t gid = blockIdx.x * blockDim.x + threadIdx.x;
-	if (gid < N) {
-		d_out[gid] = d_inp[gid];
-	}
-	__syncthreads();
-}
-
-/**
- * Naive memcpy kernel, for the purpose of comparing with
- * a more "realistic" bandwidth number. This uses registers
- * for copying as well (not that it should really make a
- * difference).
- */
-__global__ void regMemcpy(int* d_out, int* d_inp, const uint32_t N)
-{
-	#pragma unroll
-	for (uint32_t i = 0; i < Q; i++) {
-		uint32_t loc_ind = blockDim.x * i + threadIdx.x;
-		uint32_t glb_ind = blockIdx.x * blockDim.x * Q + threadIdx.x;
-		if (glb_ind < N) {
-			d_out[glb_ind] = d_inp[glb_ind];
-		}
-	}
-	__syncthreads();
-}
-
-/**
  * Generic Add operator that can be instantiated over
  *  numeric-basic types, such as int32_t, int64_t,
  *  float, double, etc.
@@ -56,9 +24,9 @@ class Add {
 	typedef T InpElTp;
 	typedef T RedElTp;
 	static const bool commutative = true;
-	static __device__ __host__ inline T identInp() { return (T)0; }
+	static __device__ __host__ inline T identInp() { return T(); }
 	static __device__ __host__ inline T mapFun(const T& el) { return el; }
-	static __device__ __host__ inline T identity() { return (T)0; }
+	static __device__ __host__ inline T identity() { return T(); }
 	static __device__ __host__ inline T apply(const T t1, const T t2) { return t1 + t2; }
 
 	static __device__ __host__ inline bool equals(const T t1, const T t2) { return (t1 == t2); }

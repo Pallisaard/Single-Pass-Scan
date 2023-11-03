@@ -3,7 +3,7 @@
 
 #include "constants.cu.h"
 #include "pbbKernels.cu.h"
-#include "sps.cu.h"
+#include "spsKernels.cu.h"
 
 int gpuAssert(cudaError_t code) {
     if (code != cudaSuccess) {

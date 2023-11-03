@@ -2,30 +2,32 @@
 
 ## Implementation
 
-- [ ] Remove all unnecessary code from the project.
-  - [ ] stupid prints left by Rasmus.
-  - [ ] General cleanup.
-- [ ] Change benchmarks assumptions to fit with our golden algorithm.
-  - [ ] Set number of read/writes in GPU inclusive scan to 2.
+- [x] Remove all unnecessary code from the project.
+  - [x] stupid prints left by Rasmus.
+  - [x] General cleanup.
+- [x] Change benchmarks assumptions to fit with our golden algorithm.
+  - [x] Set number of read/writes in GPU inclusive scan to 2.
 - [ ] Change lookback scan to use multiple threads scan for better performance.
   - [ ] Change lookback scan to use `WARP` number of threads for can.
   - [ ] Change lookback scan to use `BLOCKSIZE` number of threads for scan.
 - [ ] Optimise lookback scan to use less global reads.
-- [ ] Implement templates for variadic types.
-  - [ ] Write kernel tests for a `float32` version.
-  - [ ] Write kernel tests for a `(int32, int32, int32, int32)`.
+- [x] Implement templates for variadic types and implement tests.
+  - [x] write templates for relevant functions.
+  - [x] Write kernel tests for a `float32` version. **FLOATS ARE NON-COMMUTATIVE, SO WE CANT VALIDATE THEM WITH THE SCAN**
+  - [x] Write kernel tests for a `(int32, int32, int32, int32)`.
+- [ ] Follow up on code and remove unwanted kernels and functions.
 - [ ] Optional: Implement fence free lookback version.
 
 ## Report
 
-- [ ] Create overleaf document.
+- [x] Create overleaf document.
 - [ ] Create benchmark code in python to compare performance of different implementations.
-  - [ ] Plot GB/s over N where N = 2^x for x in [10,30].
+  - [x] Plot GB/s over N where N = 2^x for x in [10,30].
   - [ ] For the best model, plot heatmap of GB/s for different combinations of Q, B and N:
     - [ ] Q: [2, 4, 7, 8, 10, 13, 16, 20, 24, 30, 32, 40]
     - [ ] B: [32, 64, 128, 256, 512, 1024]
     - [ ] N: 2^x for x in [10, 30]
-- [ ] Create tables of the above for use in the appendix.
+- [x] Create tables of the above for use in the appendix.
 - [ ] Create code snippets for the report.
   - [ ] Create code snippets for the general kernel implementation.
     - [ ] Write detailed explanation of the how the kernel operates.
