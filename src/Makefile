@@ -45,7 +45,7 @@ run-table: $(TEST_TABLE)
 	./$(TEST_TABLE)
 
 clean:
-	rm -f $(TEST_SPS)
+	rm -f $(TEST_SPS) $(TEST_F)
 
 
 
