@@ -450,8 +450,7 @@ __global__ void SinglePassScanKernel2(T *d_in, T* d_out,
 
 	// Step 4 use lookback scan to find the inclusive prefix value
 	T prefix = lookbackScan<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
-    if (tid==0 && dynID == 0){ printf("dynblock: %d prefixval: %d blockShrMemLastElm %d\n", dynID, prefix, blockShrMem[B*Q-1]);}
-
+   
 	// Step 5 Sum the prefix into the scan
 	threadAddVal<T>(blockShrMem, prefix, tid, dynID);
 
