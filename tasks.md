@@ -29,10 +29,10 @@
     - [x] N: 2^x for x in [10, 30]
 - [x] Create tables of the above for use in the appendix.
 - [ ] Create code snippets for the report.
-  - [ ] Create code snippets for the general kernel implementation.
-    - [ ] Write detailed explanation of the how the kernel operates.
+  - [x] Create code snippets for the general kernel implementation.
+  - [ ] Write explanation of the how the kernel operates.
   - [ ] Create code snippet specifically for lookback scan.
-    - [ ] Write detailed explanation of how the lookback scan works.
+  - [x] Write explanation of how the lookback scan works.
 - [ ] Write the report.
   - [ ] Write the introduction.
   - [ ] Write the background.
