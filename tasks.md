@@ -21,12 +21,12 @@
 ## Report
 
 - [x] Create overleaf document.
-- [ ] Create benchmark code in python to compare performance of different implementations.
+- [x] Create benchmark code in python to compare performance of different implementations.
   - [x] Plot GB/s over N where N = 2^x for x in [10,30].
-  - [ ] For the best model, plot heatmap of GB/s for different combinations of Q, B and N:
-    - [ ] Q: [2, 4, 7, 8, 10, 13, 16, 20, 24, 30, 32, 40]
-    - [ ] B: [32, 64, 128, 256, 512, 1024]
-    - [ ] N: 2^x for x in [10, 30]
+  - [x] For the best model, plot heatmap of GB/s for different combinations of Q, B and N:
+    - [x] Q: [2, 4, 7, 8, 10, 13, 16, 20, 24, 30, 32, 40]
+    - [x] B: [32, 64, 128, 256, 512, 1024]
+    - [x] N: 2^x for x in [10, 30]
 - [x] Create tables of the above for use in the appendix.
 - [ ] Create code snippets for the report.
   - [ ] Create code snippets for the general kernel implementation.
