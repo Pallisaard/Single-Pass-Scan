@@ -166,6 +166,7 @@ __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
         __threadfence();
         flag_mem[dyn_idx] = A;
         int32_t grab_id = dyn_idx - 1;
+        // isnt there a bug here when we encounter an X?
         while (flag_mem[grab_id] != P) {
             if (flag_mem[grab_id] == A && grab_id > 0) {
 				agg_val = agg_mem[grab_id] + agg_val;
@@ -175,6 +176,93 @@ __device__ inline int32_t lookbackScan(volatile int32_t* agg_mem,
 		pref_mem[dyn_idx] = agg_val + pref_mem[grab_id];
         __threadfence();
         flag_mem[dyn_idx] = P;
+    }
+
+	__syncthreads();
+	int32_t prefix = pref_mem[dyn_idx] - agg_mem[dyn_idx];
+
+    return prefix;
+}
+
+// might be a bad way to inline might be better to calculate flag and res seperately
+// __device__ inline void lookBackOp  (uint32_t flag1, int32_t val1,
+//                                     uint32_t flag2, int32_t val2,
+//                                     uint32_t* resFlag, int32_t* resVal){
+    
+//     if (flag2==P) {
+//         resFlag* = P;
+//         resVal* = val2;
+//     }
+//     else { // flag2 = A and flag1 = A or P
+//         resFlag <- flag1;
+//         resVal <- val1 + val2;
+//     }
+// }
+
+// device function for a lookback scan method.
+__device__ inline int32_t lookbackScanWarp(volatile int32_t* agg_mem,
+								       volatile int32_t* pref_mem,
+                                       volatile uint32_t* flag_mem,
+									   int32_t* shr_mem, uint32_t dyn_idx,
+									   uint32_t tid) {
+    uint32_t lane = tid & (WARP - 1);  // WARP
+    int k = lgWARP;
+	// Handle lookback differently depending on dynamic id.
+    if (tid == B - 1 && dyn_idx == 0) {
+		int32_t agg_val = shr_mem[(Q - 1) * B + tid];
+		agg_mem[dyn_idx] = agg_val;
+		// printf("dynID 0 sets pref to %d\n", agg_val);
+        __threadfence();
+        flag_mem[dyn_idx] = P;
+
+    } else if (tid == B - 1 && dyn_idx > 0) {
+		int32_t agg_val = shr_mem[(Q - 1) * B + tid];
+        agg_mem[dyn_idx] = agg_val;
+        __threadfence();
+        flag_mem[dyn_idx] = A;
+    } if (tid & lane == 0 && dyn_idx > 0 && (int32_t)dyn_idx-(int32_t)lane >= 0) {
+        // We might have to loop through this untill we reach a P
+        
+        // reduce with the operator.
+        // might need to allocate some shared memory for this?
+        __shared__ uint32_t shrFlag[WARP];
+        __shared__ int32_t shrVal[WARP];
+        __shared__ int32_t prefVal; // set to the result of the reduce
+        // Copy the flag and val arrs
+        int32_t grab_id = dyn_idx - lane;
+        while (flag_mem[grab_id] != X) {/*wait until cond false*/ }
+        if (flag_mem[grab_id] == A){
+            shrFlag[lane] = A;
+            shrVal[lane] = agg_mem[grab_id];
+        } else if (flag_mem[grab_id] == P){
+            shrFlag[lane] = P;
+            shrVal[lane] = pref_mem[grab_id];
+        }
+        __syncthreads();
+        // Do the actual reduce
+        #pragma unroll
+        for (int d = 0; d < k; d++) {
+            int h = 1 << d;
+            if (lane >= h) {
+                //probably better to inline already.
+                //lookBackOp(shrFlag[lane], shrVal[lane], shrFlag[lane+h], shrVal[lane+h], &shrFlag[lane+h], &shrVal[lane+h])
+                 if (shrFlag[lane+h]==P) {
+                    shrFlag[lane] = P;
+                    shrVal[lane] = shrVal[lane+h];
+                }
+                else { // flag2 = A and flag1 = A or P
+                    shrVal[lane] += shrVal[lane+h];
+                }
+		    }
+	    }
+        __syncthreads();
+        if (tid == 0){
+            prefVal = shrVal[0];
+            pref_mem[dyn_idx] = prefVal;
+            __threadfence();
+            flag_mem[dyn_idx] = P;
+        }
+        return prefVal;
     }
 
 	__syncthreads();
