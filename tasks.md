@@ -8,7 +8,7 @@
 - [x] Change benchmarks assumptions to fit with our golden algorithm.
   - [x] Set number of read/writes in GPU inclusive scan to 2.
 - [ ] Change lookback scan to use multiple threads scan for better performance.
-  - [ ] Change lookback scan to use `WARP` number of threads for can.
+  - [x] Change lookback scan to use `WARP` number of threads for can.
   - [ ] Change lookback scan to use `BLOCKSIZE` number of threads for scan.
 - [ ] Optimise lookback scan to use less global reads.
 - [x] Implement templates for variadic types and implement tests.
