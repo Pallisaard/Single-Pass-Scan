@@ -4,8 +4,8 @@
 #include <math.h>
 #include "hostSkel.cu.h"
 
-#ifndef version
-#define VERSION 0
+#ifndef INCLUDE_QUAD
+#define INCLUDE_QUAD 0
 #endif
 
 // Initialize an array of int32_t with random values between -R and R.
@@ -433,7 +433,7 @@ int scanIncAdd(const uint32_t b_size, const size_t N, T* h_in,
 
 int i32Experiments(const uint32_t N) {
     const size_t mem_size = N*sizeof(int32_t);
-    int32_t* h_in    = (int32_t*) malloc(mem_size);
+    int32_t* h_in = (int32_t*) malloc(mem_size);
     int32_t* d_in;
     int32_t* d_out;
     cudaMalloc((void**)&d_in ,   mem_size);
@@ -463,39 +463,7 @@ int i32Experiments(const uint32_t N) {
 	return 0;
 }
 
-// int floatExperiments(const uint32_t N) {
-// 	const size_t mem_size = N*sizeof(float);
-// 	float* h_in    = (float*) malloc(mem_size);
-// 	float* d_in;
-// 	float* d_out;
-// 	cudaMalloc((void**)&d_in ,   mem_size);
-// 	cudaMalloc((void**)&d_out,   mem_size);
-
-// 	printf("Computing experiments with type: float\n");
-// 	initArrayFloat(h_in, N, 13.0f);
-// 	cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
-
-// 	// Scan experiments.
-// 	{
-// 		// computing a "realistic/achievable" bandwidth figure
-// 		bandwidthCudaMemcpy<float>(N, d_in, d_out);
-// 		bandwidthMemcpy<float>(N, d_in, d_out);
-// 		// Scan experiments.
-// 		cpuSeqScan<float>(N, h_in, d_in, d_out);
-// 		// singlePassScanAuxBlock<float>(N, h_in, d_in, d_out);
-// 		// singlePassScanLookback<float>(N, h_in, d_in, d_out);
-// 		scanIncAdd<float>(B, N, h_in, d_in, d_out);
-// 	}
-
-// 	// cleanup memory
-// 	free(h_in);
-// 	cudaFree(d_in);
-// 	cudaFree(d_out);
-
-// 	return 0;
-// }
-
-#if VERSION == 1
+#if INCLUDE_QUAD == 1
 int quadInt32Experiments(const uint32_t N) {
 	const size_t mem_size = N*sizeof(Quad<int32_t>);
 	Quad<int32_t>* h_in    = (Quad<int32_t>*) malloc(mem_size);
@@ -543,11 +511,9 @@ int main (int argc, char * argv[]) {
 
     printf("Testing parallel basic blocks for input length: %d and CUDA-block size: %d and Q: %d\n\n\n", N, B, Q);
 
-#if VERSION == 0
 	i32Experiments(N);
-#elif VERSION == 1
+#if INCLUDE_QUAD == 1
 	quadInt32Experiments(N);
-#else
 	// floatExperiments(N);
 #endif
 	return 0;
