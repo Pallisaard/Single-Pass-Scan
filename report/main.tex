@@ -231,7 +231,7 @@ Our first experiment was comparing our implementations
 % \newpage
 \begin{lstlisting}[caption=Lookback kernel,label=lst:lookbackKernel]
 template <typename T>
-__global__ void SinglePassScanKernel2(T* d_in, T* d_out,
+__global__ void SinglePassScanLookbackKernel(T* d_in, T* d_out,
                                       const size_t N,
                                       int32_t* IDAddr,
                                       volatile uint32_t* flagArr,
