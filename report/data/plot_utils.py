@@ -12,8 +12,8 @@ B_VALUES = [32, 64, 128, 256, 512, 1024]
 N_VALUES = [i for i in range(10, 31, 1)]
 
 PLOT_FILENAMES = ["graphs/results-256-30-int32.csv", "graphs/results-256-10-int32.csv", "graphs/results-1024-10-int32.csv"]
-PLOT_COLUMNS = ["cudaMemcpy", "naiveMemcpy", "cpuSeqScan", "singlePassScanAuxBlock", "singlePassScanLookback", "scanIncAdd"]
-PLOT_LABELS = ["cudaMemcpy", "Naive Memcpy", "CPU Sequential Scan", "Single Pass - Aux Block", "Single Pass - Lookback", "GPU Inclusive Scan"]
+PLOT_COLUMNS = ["cudaMemcpy", "naiveMemcpy", "cpu", "AuxBlock", "SeqLookback", "ParLookback", "scanIncAdd"]
+PLOT_LABELS = ["cudaMemcpy", "Naive Memcpy", "CPU Sequential Scan", "Aux Block", "Sequential Lookback", "Parallel Lookback", "Base GPU Scan"]
 
 
 def get_plot_info() -> Tuple[List[str], List[str], List[str]]:
@@ -121,7 +121,7 @@ def plot_experiment_data(df: pd.DataFrame,
     plt.yticks(np.arange(0, 1501, 200))
     plt.grid(color="lightgray")
     for i in range(len(columns)):
-        plt.plot(df["N (2^i)"], df[columns[i]], label=labels[i])
+        plt.plot(df["N"], df[columns[i]], label=labels[i])
     plt.legend()
 
     if title:
@@ -233,18 +233,15 @@ def plot_heatmap_from_data(
 
     ax.set_xlabel(x_label)
     ax.set_ylabel(y_label)
-    ax.set_xticks(np.arange(len(x_values)) - 0.5)
+    ax.set_xticks(np.arange(len(x_values)))
     ax.set_xticklabels(x_values)
-    ax.set_yticks(np.arange(len(y_values)) - 0.5)
+    ax.set_yticks(np.arange(len(y_values)))
     ax.set_yticklabels(y_values)
     ax.set_title(title)
     img = ax.imshow(data, cmap="winter", interpolation=interpolation)
     img.set_clim(clim)
     if colorbar:
         ax.figure.colorbar(img, ax=ax, label="GB/s")
-
-    # Add grid
-    ax.grid(True, which="both", color="lightgray", linewidth=0.3, linestyle="-")
 
     # Write the value of each cell in the heatmap
     for i in range(len(y_values)):
