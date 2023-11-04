@@ -1,8 +1,8 @@
 COMPILER?=nvcc
 OPT_FLAGS?=-O3 -diag-suppress 177
 
-BB=256# base: 1024
-QQ=30# base: 10
+BB=1024# base: 1024
+QQ=10# base: 10
 INCLUDE_QUAD=0 # 0 = int32, 1 = Quad<int32>
 PARALLEL_REDUCTION=1 # 0 = no parallel reduction, 1 = parallel reduction
 
@@ -38,13 +38,14 @@ all: $(TEST_SPS)
 
 # 100003565 1073741824
 run: $(TEST_SPS)
-	./$(TEST_SPS) 100003565
+	./$(TEST_SPS) 100
 
 run-ftest: $(TEST_F)
 	timeout 10s ./$(TEST_F) 400
 
 run-table: $(TEST_TABLE)
-	./$(TEST_TABLE)
+	./$(TEST_TABLE) >> results-$(BB)-$(QQ)-int32.csv
+
 
 run-heatmaps: testSPSheatmaps.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h spsKernels.cu.h
 	for B in 32 64 128 256 512 1024; do \

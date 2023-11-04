@@ -30,9 +30,10 @@
 - [x] Create tables of the above for use in the appendix.
 - [ ] Create code snippets for the report.
   - [x] Create code snippets for the general kernel implementation.
-  - [ ] Write explanation of the how the kernel operates.
-  - [ ] Create code snippet specifically for lookback scan.
+  - [x] Write explanation of the how the kernel operates.
+  - [x] Create code snippet specifically for lookback scan.
   - [x] Write explanation of how the lookback scan works.
+  - [ ] Write about the parallel scan method.
 - [ ] Write the report.
   - [ ] Write the introduction.
   - [ ] Write the background.

@@ -185,63 +185,64 @@ int singlePassScanAuxBlock(const size_t N, T* h_in,
  */
 template<typename T>
 int singlePassScanLookback(const size_t N, T* h_in,
-                                T* d_in, T* d_out) {
-    const size_t mem_size = N * sizeof(T);
-    T* h_out = (T*)malloc(mem_size);
-    T* h_ref = (T*)malloc(mem_size);
+						T* d_in, T* d_out,
+						bool par_redux) {
+	const size_t mem_size = N * sizeof(T);
+	T* h_out = (T*)malloc(mem_size);
+	T* h_ref = (T*)malloc(mem_size);
 	cudaMemset(d_out, 0,  N *sizeof(T));
 
 	uint32_t num_blocks = (N+B*Q-1)/(B*Q);
-    size_t f_array_size = num_blocks;
-    int32_t* IDAddr;
-    uint32_t* flagArr;
-    T* aggrArr;
-    T* prefixArr;
-    cudaMalloc((void**)&IDAddr, sizeof(int32_t));
-    cudaMemset(IDAddr, 0, sizeof(int32_t));
-    cudaMalloc(&flagArr, f_array_size * sizeof(uint32_t));
-    cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
-    cudaMalloc(&aggrArr, f_array_size * sizeof(T));
-    cudaMemset(aggrArr, 0, f_array_size * sizeof(T));
-    cudaMalloc(&prefixArr, f_array_size * sizeof(T));
-    cudaMemset(prefixArr, 0, f_array_size * sizeof(T));
+	size_t f_array_size = num_blocks;
+	int32_t* IDAddr;
+	uint32_t* flagArr;
+	T* aggrArr;
+	T* prefixArr;
+	cudaMalloc((void**)&IDAddr, sizeof(int32_t));
+	cudaMemset(IDAddr, 0, sizeof(int32_t));
+	cudaMalloc(&flagArr, f_array_size * sizeof(uint32_t));
+	cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
+	cudaMalloc(&aggrArr, f_array_size * sizeof(T));
+	cudaMemset(aggrArr, 0, f_array_size * sizeof(T));
+	cudaMalloc(&prefixArr, f_array_size * sizeof(T));
+	cudaMemset(prefixArr, 0, f_array_size * sizeof(T));
 
-    // dry run to exercise the d_out allocation!
-    SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
-    cudaDeviceSynchronize();
+	// dry run to exercise the d_out allocation!
+	SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, par_redux);
+	cudaDeviceSynchronize();
 
-    unsigned long int elapsed;
-    struct timeval t_start, t_end, t_diff;
-    // time the GPU computation
-    // Need to reset the dynID and flag arr each time we call the kernel
-    // Before we can start to run it multiple times and get a benchmark.
-    {
-        gettimeofday(&t_start, NULL);
-        for(int i=0; i<RUNS_GPU; i++) {
-            cudaMemset(IDAddr, 0, sizeof(int32_t));
-            cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
-            cudaMemset(aggrArr, 0, f_array_size * sizeof(T));
-            cudaMemset(prefixArr, 0, f_array_size * sizeof(T));
-            SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
-        }
-        cudaDeviceSynchronize();
-        gettimeofday(&t_end, NULL);
-        timeval_subtract(&t_diff, &t_end, &t_start);
-        elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
-        elapsed = elapsed / RUNS_GPU;
-        double gigaBytesPerSec = N  * 2 * sizeof(T) * 1.0e-3f / elapsed;
-        printf("%.2f,", gigaBytesPerSec);
-    }
-    gpuAssert( cudaPeekAtLastError() );
+	unsigned long int elapsed;
+	struct timeval t_start, t_end, t_diff;
+	// time the GPU computation
+	// Need to reset the dynID and flag arr each time we call the kernel
+	// Before we can start to run it multiple times and get a benchmark.
+	{
+		gettimeofday(&t_start, NULL);
+		for(int i=0; i<RUNS_GPU; i++) {
+			cudaMemset(IDAddr, 0, sizeof(int32_t));
+			cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
+			cudaMemset(aggrArr, 0.0, f_array_size * sizeof(T));
+			cudaMemset(prefixArr, 0.0, f_array_size * sizeof(T));
+			SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, par_redux);
+		}
+		cudaDeviceSynchronize();
+		gettimeofday(&t_end, NULL);
+		timeval_subtract(&t_diff, &t_end, &t_start);
+		elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+		elapsed = elapsed / RUNS_GPU;
+		double gigaBytesPerSec = N  * 2 * sizeof(T) * 1.0e-3f / elapsed;
+	printf("%.2f,", gigaBytesPerSec);
+	}
+	gpuAssert( cudaPeekAtLastError() );
 
 	free(h_out);
-    free(h_ref);
-    cudaFree(IDAddr);
-    cudaFree(flagArr);
-    cudaFree(aggrArr);
-    cudaFree(prefixArr);
+	free(h_ref);
+	cudaFree(IDAddr);
+	cudaFree(flagArr);
+	cudaFree(aggrArr);
+	cudaFree(prefixArr);
 
-    return 0;
+	return 0;
 }
 
 /*
@@ -356,7 +357,8 @@ int i32Experiments(const uint32_t N) {
 		// Scan experiments.
         cpuSeqScan<int32_t>(N, h_in, d_in, d_out);
         singlePassScanAuxBlock<int32_t>(N, h_in, d_in, d_out);
-        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out);
+        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out, false);
+        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out, true);
 		if (N != 2 << 21)
 			scanIncAdd<int32_t>(B, N, h_in, d_in, d_out);
     }
@@ -390,7 +392,8 @@ int quadInt32Experiments(const uint32_t N) {
 		// Scan experiments.
 		cpuSeqScan<Quad<int32_t>>(N, h_in, d_in, d_out);
 		singlePassScanAuxBlock<Quad<int32_t>>(N, h_in, d_in, d_out);
-		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out);
+		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out, false);
+		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out, true);
 		if (N != 2 << 19)
 			scanIncAdd<Quad<int32_t>>(B, N, h_in, d_in, d_out);
 	}
@@ -412,9 +415,9 @@ int main (int argc, char * argv[]) {
 
     initHwd();
 
-    printf("Testing parallel basic blocks for CUDA-block size: %d and Q: %d\n\n\n", B, Q);
+    // printf("Testing parallel basic blocks for CUDA-block size: %d and Q: %d\n\n\n", B, Q);
 
-	printf("N (2^i),cudaMemcpy,naiveMemcpy,cpuSeqScan,singlePassScanAuxBlock,singlePassScanLookback,scanIncAdd\n");
+	printf("N,cudaMemcpy,naiveMemcpy,cpu,AuxBlock,SeqLookback,ParLookback,scanIncAdd\n");
 	for (uint32_t i = 10; i < 31; i++) {
 		printf("%d,", i);
 		uint32_t N = 2 << i;
@@ -424,7 +427,7 @@ int main (int argc, char * argv[]) {
 	}
 	
 	#if INCLUDE_QUAD
-	printf("N,cudaMemcpy,naiveMemcpy,cpuSeqScan,singlePassScanAuxBlock,singlePassScanLookback,scanIncAdd\n");
+	printf("N,cudaMemcpy,naiveMemcpy,cpu,AuxBlock,SeqLookback,ParLookback,scanIncAdd\n");
 	for (uint32_t i = 10; i < 30; i++) {
 		printf("%d,", i);
 		uint32_t N = 2 << i;
