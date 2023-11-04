@@ -269,14 +269,6 @@ int singlePassScanLookback(const size_t N, T* h_in,
             if(neq(h_out[i], h_ref[i])) {
                 printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
 				       i, h_out[i], h_ref[i]);
-				printf("[");
-				int resolution = 32;
-				for (int k = -resolution; k < resolution; k++) {
-					if (i + k >= 0) {
-						printf("%d, ", h_out[i + k]);
-					}
-				}
-				printf("]\n");
                 exit(1);
             }
         }
