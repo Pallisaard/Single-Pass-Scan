@@ -12,6 +12,9 @@
 #ifndef B
 #define B 1024
 #endif
+#ifndef PARALLEL_REDUCTION
+#define PARALLEL_REDUCTION 0
+#endif
 
 template<typename T>
 class Quad {
@@ -227,9 +230,9 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
     T agg_val = shr_mem[Q * B -1]; // The aggregate value for this block.
     // Some shared memory usefull for doing the reduce of the 
     // flag/aggregate/prefix arrays.
-    __shared__ uint32_t shrFlag[WARP];
-    __shared__ int32_t shrVal[WARP];
-    __shared__ int32_t prefVal; // set to the result of the reduce
+    volatile __shared__ uint32_t shrFlag[WARP];
+    volatile __shared__ int32_t shrVal[WARP];
+    volatile __shared__ int32_t prefVal; // set to the result of the reduce
 	// Handle lookback differently depending on dynamic id.
     // If block 0 just set the prefix value to be the aggregated result.
     if (tid == B - 1 && dyn_idx == 0) {
@@ -255,7 +258,7 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
             if (((int32_t)look_idx-(int32_t)lane) > 0) {
                 // First we copy the flag and values from global to the shared
                 // memory we allocated earlier.
-                // For this we use gram_id to know from where in global memory we read
+                // For this we use grab_id to know from where in global memory we read
                 // and put_id for where in shared memory we write it.
                 // we do some calculations since lane 0 reads the element
                 // just before this block, and so on, but we therefore want the last lane
@@ -265,17 +268,20 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
                 while (flag_mem[grab_id] == X) {/*wait until we do not read an X*/ }
                 // Copy the value over.
                 if (flag_mem[grab_id] == A){
+					shrVal[put_id] = agg_mem[grab_id];
+					__threadfence();
                     shrFlag[put_id] = A;
-                    shrVal[put_id] = agg_mem[grab_id];
                 } else if (flag_mem[grab_id] == P){
+					shrVal[put_id] = pref_mem[grab_id];
+					__threadfence();
                     shrFlag[put_id] = P;
-                    shrVal[put_id] = pref_mem[grab_id];
                 }
             }
             // If we were not a lane that should copy, just write 0, ie. Neutral element.
             else{
-                shrFlag[lane] = 0;
-                shrVal[lane]  = 0;
+				shrVal[lane]  = 0;
+				__threadfence();
+                shrFlag[lane] = X;
             }
         }
         // After the values has been copied to shared memory sync up the threads.
@@ -283,15 +289,16 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
         #pragma unroll
         // We then do a loop to do the reduce, see reduce in PBBKernel or warpScan above.
         for (int d = 0; d < k; d++) {
-            if (tid == lane&& dyn_idx > 0 && ((int32_t)look_idx-(int32_t)lane) > 0) {
+            if (tid == lane && dyn_idx > 0 && ((int32_t)look_idx-(int32_t)lane) > 0) {
                 int h = 1 << d;
                 if (lane % (h<<1) ==0) {
                     // The operator we use in the reduction, that just takes the second
                     // value if the P-flag is set, otherwise it sums it up, note that the result is
                     // kept in the first Values place in the reduction, in contrast to warpScan.
                     if (shrFlag[lane+h]==P) {
+						shrVal[lane] = shrVal[lane+h];
+						__threadfence();
                         shrFlag[lane] = P;
-                        shrVal[lane] = shrVal[lane+h];
                     }
                     else { // flag2 = A and flag1 = A or P
                         shrVal[lane] += shrVal[lane+h];
@@ -314,6 +321,9 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
         // then the reduced value will have the P flag set as well.
     } while (shrFlag[0] != P);
     // Lastly we update the prefix array with the prefix value.
+
+	__syncthreads();
+
     if (tid == 0){
         pref_mem[dyn_idx] = agg_val+ prefVal;
         __threadfence();
@@ -425,7 +435,8 @@ __global__ void SinglePassScanKernel2(T *d_in, T* d_out,
 									  const size_t N, int32_t* IDAddr,
 									  volatile uint32_t* flagArr,
 									  volatile T* aggrArr,
-									  volatile T* prefixArr) {
+									  volatile T* prefixArr,
+									  bool par_redux) {
 	// Allocate shared memory
 	__shared__ T blockShrMem[Q * B];
 	volatile __shared__ T blockShrBuf[B];
@@ -449,8 +460,13 @@ __global__ void SinglePassScanKernel2(T *d_in, T* d_out,
 	threadAdd<T>(blockShrMem, blockShrBuf, tid);
 
 	// Step 4 use lookback scan to find the inclusive prefix value
-	T prefix = lookbackScan<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
-   
+	T prefix = T();
+	if (!par_redux) {
+		prefix = lookbackScan<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
+	} else {
+		prefix = lookbackScanWarp<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
+	}
+
 	// Step 5 Sum the prefix into the scan
 	threadAddVal<T>(blockShrMem, prefix, tid, dynID);
 

@@ -1,9 +1,10 @@
 COMPILER?=nvcc
 OPT_FLAGS?=-O3 -diag-suppress 177
 
-BB=32# base: 1024
-QQ=10# base: 10
+BB=256# base: 1024
+QQ=30# base: 10
 INCLUDE_QUAD=0 # 0 = int32, 1 = Quad<int32>
+PARALLEL_REDUCTION=1 # 0 = no parallel reduction, 1 = parallel reduction
 
 #-arch=compute_35
 # NOTE COMPARE WITH VOLATILE OFF AND REMEMBER TO
@@ -25,7 +26,7 @@ default: compile run
 compile: $(TEST_SPS)
 
 $(TEST_SPS): testSPS.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h spsKernels.cu.h
-	$(COMPILER) $(OPT_FLAGS)  -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) -D INCLUDE_QUAD=$(INCLUDE_QUAD) testSPS.cu
+	$(COMPILER) $(OPT_FLAGS)  -o $(TEST_SPS) -D B=$(BB) -D Q=$(QQ) -D INCLUDE_QUAD=$(INCLUDE_QUAD) -D PARALLEL_REDUCTION=$(PARALLEL_REDUCTION) testSPS.cu
 
 $(TEST_F): testSPSFunctions.cu hostSkel.cu.h pbbKernels.cu.h constants.cu.h spsKernels.cu.h
 	$(COMPILER) $(OPT_FLAGS) -o $(TEST_F) -D B=$(BB) -D Q=$(QQ) testSPSFunctions.cu

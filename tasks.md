@@ -7,9 +7,9 @@
   - [x] General cleanup.
 - [x] Change benchmarks assumptions to fit with our golden algorithm.
   - [x] Set number of read/writes in GPU inclusive scan to 2.
-- [ ] Change lookback scan to use multiple threads scan for better performance.
+- [x] Change lookback scan to use multiple threads scan for better performance.
   - [x] Change lookback scan to use `WARP` number of threads for can.
-  - [ ] Change lookback scan to use `BLOCKSIZE` number of threads for scan.
+    - [x] implement that if no P flag is found, look one more warp back.
 - [ ] Optimise lookback scan to use less global reads.
 - [x] Implement templates for variadic types and implement tests.
   - [x] write templates for relevant functions.

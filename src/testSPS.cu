@@ -234,7 +234,8 @@ int singlePassScanAuxBlock(const size_t N, T* h_in,
  */
 template<typename T>
 int singlePassScanLookback(const size_t N, T* h_in,
-                                T* d_in, T* d_out) {
+                           T* d_in, T* d_out,
+						   bool par_redux) {
     const size_t mem_size = N * sizeof(T);
     T* h_out = (T*)malloc(mem_size);
     T* h_ref = (T*)malloc(mem_size);
@@ -256,7 +257,7 @@ int singlePassScanLookback(const size_t N, T* h_in,
     cudaMemset(prefixArr, 0, f_array_size * sizeof(T));
 
     // dry run to exercise the d_out allocation!
-    SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+    SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, par_redux);
     cudaDeviceSynchronize();
 
     unsigned long int elapsed;
@@ -271,7 +272,7 @@ int singlePassScanLookback(const size_t N, T* h_in,
             cudaMemset(flagArr, X, f_array_size * sizeof(uint32_t));
             cudaMemset(aggrArr, 0.0, f_array_size * sizeof(T));
             cudaMemset(prefixArr, 0.0, f_array_size * sizeof(T));
-            SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr);
+            SinglePassScanKernel2<T><<< num_blocks, B>>>(d_in, d_out, N, IDAddr, flagArr, aggrArr, prefixArr, par_redux);
         }
         cudaDeviceSynchronize();
         gettimeofday(&t_end, NULL);
@@ -279,9 +280,14 @@ int singlePassScanLookback(const size_t N, T* h_in,
         elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
         elapsed = elapsed / RUNS_GPU;
         double gigaBytesPerSec = N  * 2 * sizeof(T) * 1.0e-3f / elapsed;
-        printf("- Single Pass Scan using lookback runs in: %lu microsecs, GB/sec: %.2f\n",
+		if (par_redux) {
+        	printf("- Single Pass Scan using sequential lookback runs in: %lu microsecs, GB/sec: %.2f\n",
 		       elapsed, gigaBytesPerSec);
-    }
+		} else {
+			printf("- Single Pass Scan using parallel lookback runs in: %lu microsecs, GB/sec: %.2f\n",
+		       elapsed, gigaBytesPerSec);
+		}
+	}
     gpuAssert( cudaPeekAtLastError() );
 
     // The CPU we might as well just add the benchmark
@@ -300,6 +306,14 @@ int singlePassScanLookback(const size_t N, T* h_in,
             if(neq(h_out[i], h_ref[i])) {
                 printf("  - !!!INVALID!!!: Single Pass Scan at index %d, dev-val: %d, host-val: %d\n",
 				       i, h_out[i], h_ref[i]);
+				printf("[");
+				int resolution = 32;
+				for (int k = -resolution; k < resolution; k++) {
+					if (i + k >= 0) {
+						printf("%d, ", h_out[i + k]);
+					}
+				}
+				printf("]\n");
                 exit(1);
             }
         }
@@ -451,7 +465,8 @@ int i32Experiments(const uint32_t N) {
 		// Scan experiments.
         cpuSeqScan<int32_t>(N, h_in, d_in, d_out);
         singlePassScanAuxBlock<int32_t>(N, h_in, d_in, d_out);
-        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out);
+        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out, false);
+        singlePassScanLookback<int32_t>(N, h_in, d_in, d_out, true);
 		scanIncAdd<int32_t>(B, N, h_in, d_in, d_out);
     }
 
@@ -485,7 +500,8 @@ int quadInt32Experiments(const uint32_t N) {
 		// Scan experiments.
 		cpuSeqScan<Quad<int32_t>>(N, h_in, d_in, d_out);
 		singlePassScanAuxBlock<Quad<int32_t>>(N, h_in, d_in, d_out);
-		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out);
+		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out, false);
+		singlePassScanLookback<Quad<int32_t>>(N, h_in, d_in, d_out, true);
 		scanIncAdd<Quad<int32_t>>(B, N, h_in, d_in, d_out);
 	}
 
@@ -514,7 +530,6 @@ int main (int argc, char * argv[]) {
 	i32Experiments(N);
 #if INCLUDE_QUAD == 1
 	quadInt32Experiments(N);
-	// floatExperiments(N);
 #endif
 	return 0;
 
