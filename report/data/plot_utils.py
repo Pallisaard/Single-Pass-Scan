@@ -198,33 +198,13 @@ def plot_heatmap_from_data(
     colorbar: bool = False, 
     clim: Optional[Tuple[int, int]] = None, 
     filename: Optional[str] = None, 
-    return_ax: bool = False, 
+    return_ax: bool = False,
+    rotation: int = 0,
+    fontweight: str = "normal",
     ax: Optional[plt.Axes] = None, 
     figsize: Tuple[int, int] = (8, 6), 
     dpi: int = 300
 ):
-    """
-    Plots a heatmap from a 2D numpy array.
-
-    Args:
-        data (np.ndarray): The 2D numpy array to plot.
-        x_values (List[int]): The values to use for the x-axis.
-        y_values (List[int]): The values to use for the y-axis.
-        x_label (str): The label for the x-axis.
-        y_label (str): The label for the y-axis.
-        title (Optional[str], optional): The title of the plot. Defaults to None.
-        interpolation (str, optional): The interpolation method to use. Defaults to "nearest".
-        colorbar (bool, optional): Whether to show a colorbar. Defaults to False.
-        clim (Optional[Tuple[int, int]], optional): The limits for the colorbar. Defaults to None.
-        filename (Optional[str], optional): The filename to save the plot to. Defaults to None.
-        return_ax (bool, optional): Whether to return the Axes object. Defaults to False.
-        ax (Optional[plt.Axes], optional): The Axes object to use for the plot. Defaults to None.
-        figsize (Tuple[int, int], optional): The size of the figure. Defaults to (8, 6).
-        dpi (int, optional): The DPI of the figure. Defaults to 300.
-
-    Returns:
-        Optional[plt.Axes]: The Axes object if `return_ax` is True, else None.
-    """
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize)
 
@@ -243,13 +223,21 @@ def plot_heatmap_from_data(
     if colorbar:
         ax.figure.colorbar(img, ax=ax, label="GB/s")
 
-    # Write the value of each cell in the heatmap
+    # Add grid
+    ax.set_xticks(np.arange(-.5, len(x_values), 1), minor=True)
+    ax.set_yticks(np.arange(-.5, len(y_values), 1), minor=True)
+    ax.grid(which='minor', color='darkgray', linestyle='-', linewidth=1, alpha=0.5)
+
     for i in range(len(y_values)):
         for j in range(len(x_values)):
             if data[i, j] > clim[1] * 0.8:
-                ax.text(j, i, data[i, j], ha="center", va="center", color="darkblue", fontsize=7)
+                ax.text(j, i, data[i, j], ha="center",
+                        va="center", color="darkblue", fontsize=8,
+                        fontweight=fontweight, rotation=rotation)
             else:
-                ax.text(j, i, data[i, j], ha="center", va="center", color="white", fontsize=7)
+                ax.text(j, i, data[i, j], ha="center",
+                        va="center", color="white", fontsize=8,
+                        fontweight=fontweight, rotation=rotation)
 
     if filename:
         plt.savefig(filename, dpi=dpi, bbox_inches="tight")
@@ -257,6 +245,7 @@ def plot_heatmap_from_data(
     if return_ax:
         return ax
     return None
+
 
 def plot_heatmap(
     array_data: np.ndarray,
