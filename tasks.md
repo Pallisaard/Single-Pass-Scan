@@ -10,13 +10,12 @@
 - [x] Change lookback scan to use multiple threads scan for better performance.
   - [x] Change lookback scan to use `WARP` number of threads for can.
     - [x] implement that if no P flag is found, look one more warp back.
-- [ ] Optimise lookback scan to use less global reads.
+- [x] Optimise lookback scan to use less global reads.
 - [x] Implement templates for variadic types and implement tests.
   - [x] write templates for relevant functions.
   - [x] Write kernel tests for a `float32` version. **FLOATS ARE NON-COMMUTATIVE, SO WE CANT VALIDATE THEM WITH THE SCAN**
   - [x] Write kernel tests for a `(int32, int32, int32, int32)`.
-- [ ] Follow up on code and remove unwanted kernels and functions.
-- [ ] Optional: Implement fence free lookback version.
+- [x] Follow up on code and remove unwanted kernels and functions.
 
 ## Report
 
@@ -33,11 +32,11 @@
   - [x] Write explanation of the how the kernel operates.
   - [x] Create code snippet specifically for lookback scan.
   - [x] Write explanation of how the lookback scan works.
-  - [ ] Write about the parallel scan method.
+  - [ ] Write about the parallel lookback scan method.
 - [ ] Write the report.
-  - [ ] Write the introduction.
+  - [x] Write the introduction.
   - [ ] Write the background.
-  - [ ] Write the implementation.
-  - [ ] Write the results.
-  - [ ] Write the conclusion.
-  - [ ] Write the appendix.
+  - [-] Write the implementation.
+  - [x] Write the results.
+  - [x] Write the conclusion.
+  - [x] Write the appendix.

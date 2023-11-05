@@ -12,65 +12,6 @@
 #ifndef B
 #define B 1024
 #endif
-#ifndef PARALLEL_REDUCTION
-#define PARALLEL_REDUCTION 0
-#endif
-
-template<typename T>
-class Quad {
-public:
-	T x;
-	T y;
-	T z;
-	T w;
-
-	// initialize x y z q to default values of type T
-	__device__ __host__ inline Quad() : x(T()), y(T()), z(T()), w(T()) {}
-
-	__device__ __host__ inline Quad(const T& x, const T& y,
-									const T& z, const T& w)
-									: x(x), y(y), z(z), w(w) {}
-
-	__device__ __host__ inline Quad<T>(const Quad<T>& q) : x(q.x), y(q.y), z(q.z), w(q.w) {}
-
-    __device__ __host__ inline Quad<T>(const volatile Quad<T>& q) : x(q.x), y(q.y), z(q.z), w(q.w) {}
-
-    __device__ __host__ inline Quad<T>& operator=(const volatile Quad<T>& q) {
-        x = q.x;
-        y = q.y;
-        z = q.z;
-        w = q.w;
-        return *this;
-    }
-
-    __device__ __host__ inline volatile Quad<T>& operator=(const Quad<T>& q) volatile {
-        x = q.x;
-        y = q.y;
-        z = q.z;
-        w = q.w;
-        return *this;
-    }
-
-	__device__ __host__ inline Quad<T>& operator=(const Quad<T>& q) {
-		x = q.x;
-		y = q.y;
-		z = q.z;
-		w = q.w;
-		return *this;
-	}
-
-	__device__ __host__ inline Quad<T> operator+(const Quad<T>& q) {
-		return Quad<T>(x + q.x, y + q.y, z + q.z, w + q.w);
-	}
-
-	__device__ __host__ inline Quad<T> operator+(const volatile Quad<T>& q) const volatile {
-        return Quad<T>(x + q.x, y + q.y, z + q.z, w + q.w);
-    }
-
-	__device__ __host__ inline Quad<T> operator-(const volatile Quad<T>& q) const volatile {
-        return Quad<T>(x - q.x, y - q.y, z - q.z, w - q.w);
-    }
-};
 
 // shd_mem is a pointer to an array in shared memory. It has size Q * B.
 // idx is the id of the part of the shared memory we start scanning.
@@ -228,7 +169,7 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
     uint32_t look_idx = dyn_idx;
     int k = lgWARP;
     T agg_val = shr_mem[Q * B -1]; // The aggregate value for this block.
-    // Some shared memory usefull for doing the reduce of the 
+    // Some shared memory usefull for doing the reduce of the
     // flag/aggregate/prefix arrays.
     volatile __shared__ uint32_t shrFlag[WARP];
     volatile __shared__ int32_t shrVal[WARP];
@@ -245,7 +186,7 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
         prefVal = 0;
         __threadfence();
         flag_mem[dyn_idx] = A;
-    } 
+    }
     // Block 0 can return 0 already
     if (dyn_idx == 0) return 0;
     // Otherwise we need to loop, where we do the reduction over the
@@ -304,7 +245,7 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
                         shrVal[lane] += shrVal[lane+h];
                     }
                 }
-                
+
             }
             // synchronise the threads in each iteration, since the reduction of 2 elements
             // is used by another lane in the next iteration for further reduction.
@@ -404,7 +345,16 @@ __device__ inline void copyShr2Glb(uint32_t glb_offs, const uint32_t N,
     __syncthreads();  // leave this here at the end!
 }
 
-__device__ inline int32_t getDynID(int32_t* IDAddr, uint32_t tid) { 
+/**
+ * Helper function that returns a dynamic ID for each block
+ *    and adds to the global dynamic ID counter using atomic
+ *    addition.
+ * `IDAddr` is the address of a global variable that stores
+ *   the current dynamic ID.
+ * `tid` is the thread ID within the block.
+ * The function returns the dynamic ID of the block.
+*/
+__device__ inline int32_t getDynID(int32_t* IDAddr, uint32_t tid) {
     __shared__ int32_t dynID;
 	int32_t retDynID = 0;
     if (tid==0){
@@ -415,28 +365,18 @@ __device__ inline int32_t getDynID(int32_t* IDAddr, uint32_t tid) {
 	return retDynID;
 }
 
-template<typename T>
-__global__ void glbShrMemcpy(T* d_out, T* d_inp, const uint32_t N)
-{
-	uint32_t tid = threadIdx.x;
-	uint32_t globaloffset = blockIdx.x * B * Q;
-	__shared__ T blockShrMem[Q * B];
-	copyGlb2Shr<T>(globaloffset, N, 0, d_inp, blockShrMem, tid);
-
-	copyShr2Glb<T>(globaloffset, N, d_out, blockShrMem, tid);
-}
 
 /**
  * A single pass scan kernel that uses the three arrays described i
  * Merrill & Garland's paper.
 */
 template<typename T>
-__global__ void SinglePassScanKernel2(T *d_in, T* d_out,
-									  const size_t N, int32_t* IDAddr,
-									  volatile uint32_t* flagArr,
-									  volatile T* aggrArr,
-									  volatile T* prefixArr,
-									  bool par_redux) {
+__global__ void SinglePassScanLookbackKernel(T *d_in, T* d_out,
+									  	     const size_t N, int32_t* IDAddr,
+									         volatile uint32_t* flagArr,
+									         volatile T* aggrArr,
+									         volatile T* prefixArr,
+									         bool par_redux) {
 	// Allocate shared memory
 	__shared__ T blockShrMem[Q * B];
 	volatile __shared__ T blockShrBuf[B];
@@ -479,11 +419,11 @@ __global__ void SinglePassScanKernel2(T *d_in, T* d_out,
  * aggregates.
 */
 template<typename T>
-__global__ void SinglePassScanKernel1(T* d_in, T* d_out,
-                                      const size_t N, int32_t* IDAddr,
-                                      volatile uint32_t* flagArr,
-									  volatile T* aggrArr,
-                                      volatile T* prefixArr) {
+__global__ void SinglePassScanAuxKernel(T* d_in, T* d_out,
+                                        const size_t N, int32_t* IDAddr,
+                                        volatile uint32_t* flagArr,
+									    volatile T* aggrArr,
+                                        volatile T* prefixArr) {
     // Step 1 get a dynamic id
     uint32_t tid = threadIdx.x;
 	uint32_t num_blocks = gridDim.x;
@@ -563,27 +503,5 @@ __global__ void naiveMemcpy(T* d_out, T* d_inp, const uint32_t N)
 	}
 	__syncthreads();
 }
-
-/*** Steps for the kernel in general and for other Kernel ***/
-
-// Step 0 calculate some id's and stuff we will use
-
-// Step 1 get a dynamic id
-
-// Step 2 copy the memory the block will scan into shared memory.
-
-// Step 3 Do the scan on the block
-
-// Step 4 Update aggregate array
-
-// Step 5 calculate prefixArr value, might block or wait.
-
-// Step 6 Update prefix array
-
-// Step 7 Sum the prefix into the scan
-
-// Step 8 Copy the result into global memory
-
-// Step 9 Die!
 
 #endif /* SPS_CU_H */

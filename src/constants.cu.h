@@ -64,10 +64,10 @@ int timeval_add(struct timeval *result, struct timeval *t2,
 }
 
 int timeval_init(struct timeval *t, time_t sec, suseconds_t usec) {
-	if (t == NULL || sec < 0 || usec < 0) return -1;
-	t->tv_sec = sec;
-	t->tv_usec = usec;
-	return 0;
+    if (t == NULL || sec < 0 || usec < 0) return -1;
+    t->tv_sec = sec;
+    t->tv_usec = usec;
+    return 0;
 }
 
 #endif  // HWD_SOFT_CONSTANTS
