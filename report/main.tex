@@ -112,7 +112,7 @@
             footskip=.25in]{geometry}
 
 %%% TITLE%%%
-\title{A Single Pass Scan Using Lookback}
+\title{A Single Pass Scan Using look-back}
 \author{dwp992 \& lsh789}
 \date{November 2023\vspace{2ex}}
 
@@ -122,47 +122,47 @@
 \thispagestyle{fancy}
 
 \section{Introduction}
-Throughout this course we've covered many topics in parallel programming, among these one of the primary building blocks of parallel programming: The array scan. The scanning algorithms we've seen up until now have either been fully sequential or have in some way been multi-pass, i.e., more than 2 reads/writes are made to global memory per element. In this project we seek to implement a parallel single pass scanning algorithm, utilizing shared memory and registers for the vast amount of our computations and only performing computations in global memory when doing inter-block computations. We experiment with different methods, such as having this inter-block communication being performed using an auxiliary block and using global aggregate and prefix arrays with blocks computing prefixes either sequential or in parallel. Furthermore, using these methods along with a list of baselines we experiment with different block sizes, register sizes per thread, and array size.
+Throughout this course we've covered many topics in parallel programming, among these one of the primary building blocks of parallel programming: The array scan. The scanning algorithms we've seen up until now have either been fully sequential or have in some way been multi-pass, i.e., more than 2 reads/writes are made to global memory per element. In this project we seek to implement a parallel single pass scanning algorithm, utilizing shared memory and registers for the vast amount of our computations, and only performing computations in global memory when doing inter-block computations. We experiment with different methods, such as having this inter-block communication being performed using an auxiliary block and using global aggregate and prefix arrays with blocks computing prefixes either sequential or in parallel. Furthermore, using these methods along with a list of baselines we experiment with different block sizes, register sizes per thread, and array size.
 
 \section{Background}
 \label{sec:background}
 
-This project is based on the paper "Single-pass Parallel Prefix Scan with Decoupled Look-back" \cite{SPS_paper}. In this paper the authors go through explaining their implementation of a single pass scan, meaning we can scan with only 2 global IO accesses per element. (Not counting a few extra needed per block). The important part of the algorithm they introduce, is the decoupled lookback scan, that will scan over what previous blocks have gotten. The paper also proposes a number of optimisations, some of then we implemented and some of them will be discussed later on.
+This project is based on the paper "Single-pass Parallel Prefix Scan with Decoupled Look-back" \cite{SPS_paper}. In this paper the authors go through explaining their implementation of a single pass scan, meaning we can scan with only 2 global IO accesses per element. (Not counting a few extra needed per block). The important part of the algorithm they introduce, is the decoupled look-back scan, that will scan over what previous blocks have gotten. The paper also proposes a number of optimisations, some of then we implemented and some of them will be discussed later on.
 
-\subsection{Decoupled lookback}
+\subsection{Decoupled look-back}
 
 Normally when we would do a scan we would need 3 global IO accesses per element, since we would first need a read, when calculating the reduction of each block and scanning over the result of these, this result will then be used in a second pass through were we then scan each block while adding the prefix we found from the reduction/block-level-scan this gives us another global read. And finally we need to write the result. What we can see from this normal implementation is that we 2 of the 3 global accesses are reading the same memory, the only problem is that we are reading it with bad temporal locality, so we can not keep the data. This is what we try to fix by doing a single-pass scan, since we only pass through the data once, we only do one global read. And then we calculate the reduction and result right away.
 
-One of the issues with this way of implementing it. Is that we now have a dependency between the blocks, so in order for block 2 to calculate the result of it's scan, it needs the prefix value from block 1. In the paper they then introduce the lookback algorithm that lets the blocks update a global array with their prefix and aggregate values that future blocks then can use. This is done by the aggregate value being just a reduction of all the values in the block, and the prefix can be found by adding this aggregate to the previous blocks prefix. But for this we also need to ensure that the blocks are being calculated in certain order, so we do not just have all calculating threads waiting for block 1, that is in queue to being spawned, the paper suggest a dynamic scheduling of the blocks, which we utilised in our implementation.
+One of the issues with this way of implementing it. Is that we now have a dependency between the blocks, so in order for block 2 to calculate the result of it's scan, it needs the prefix value from block 1. In the paper they then introduce the look-back algorithm that lets the blocks update a global array with their prefix and aggregate values that future blocks then can use. This is done by the aggregate value being just a reduction of all the values in the block, and the prefix can be found by adding this aggregate to the previous blocks prefix. 
+Specifically we have 3 global arrays, each with the length that is the number of blocks. The first array, a flag array, where the flag can be X, if the neither the aggregate nor the prefix value has been calculated, A, if the aggregate value has been calculated but not the prefix value, and P if the prefix and aggregate value has been calculated. The other 2 arrays are then the aggregate and prefix arrays, that contain the prefix and aggregate values.
+But for this we also need to ensure that the blocks are being calculated in certain order, so we do not just have all calculating threads waiting for block 1, that is in queue to being spawned, the paper suggest a dynamic scheduling of the blocks, which we utilised in our implementation.
 
-\note{Bør man gå mere i dybden med aggrgate flag og prefix array, og lave en helt down to earth definition af dem : Jeg synes bare vi skal gøre det kort.}
 
-\note{Maybe add the some text about the properties discussed in the paper, and what effect they have.}
 
 \section{Our implementation}
 \label{Sec:Implementation}
-This section describes the lookback algorithm we've implemented, the kernel that executes the scan, and the associated functions we've defined. Listing \ref{lst:lookbackKernel} describes the lookback kernel and listing \ref{let:seqLookbackScan} contains the code for our lookback algorithm. All our kernel related code can be found in the \verb|spsKernels.cu.h| file, and our tests which verify the algorithms can be found in the \verb|testSPS.cu| file. The algorithms we've implemented verify against a sequential CPU scan, and using the accompanying code, while in the \verb|/src| directory, one can execute the code that verifies the algorithms by calling \verb|make|.
+This section describes the look-back algorithm we've implemented, the kernel that executes the scan, and the associated functions we've defined. Listing \ref{lst:look-backKernel} describes the look-back kernel and listing \ref{let:seqlook-backScan} contains the code for our look-back algorithm. All our kernel related code can be found in the \verb|spsKernels.cu.h| file, and our tests which verify the algorithms can be found in the \verb|testSPS.cu| file. The algorithms we've implemented verify against a sequential CPU scan, and using the accompanying code while in the \verb|/src| directory one can execute the code that verifies the algorithms by calling \verb|make|.
 
-\subsection{The Lookback Scan Kernel}
-\label{sec:impl-lookback-kernel}
-Listing \ref{lst:lookbackKernel} takes pointers to the input and output arrays, along with a size. We also pass as arguments 4 pointers to different global memory locations. The first is a dynamic ID that is shared across blocks. The second, third, and fourth are pointers to the flag array, aggregate array, and inclusive prefix array described in section \ref{sec:background}. The arrays are implemented using the \verb|volatile| keyword to ensure that memory is visible for all threads as soon as it's written, and the dynamic ids are handled using atomic additions. Specifically, the \verb|atomicAdd| function is used to add to the global variable and return the value before adding. Line 9-10 initializes the shared memory that we'll need. We create a shared array of size $Q * B$ and a shared buffer of size $B$. The shared array accompanying each block is reserved for part of the array the block scans. The shared buffer stores scans performed by each thread on \verb|Q| elements. The kernel code contains 6 different device functions:
+\subsection{The look-back Scan Kernel}
+\label{sec:impl-look-back-kernel}
+Listing \ref{lst:look-backKernel} takes pointers to the input and output arrays, along with a size. We also pass as arguments 4 pointers to different global memory locations. The first is a dynamic ID that is shared across blocks. The second, third, and fourth are pointers to the flag array, aggregate array, and inclusive prefix array described in section \ref{sec:background}. The arrays are implemented using the \verb|volatile| keyword to ensure that memory is visible for all threads as soon as it's written, and the dynamic ids are handled using atomic additions. Specifically, the \verb|atomicAdd| function is used to add to the global variable and return the value before adding. Line 9-10 initializes the shared memory that we'll need. We create a shared array of size $Q * B$ and a shared buffer of size $B$. The shared array accompanying each block is reserved for part of the array the block scans. The shared buffer stores scans performed by each thread on \verb|Q| elements. The kernel code contains 6 different device functions:
 \begin{enumerate}[leftmargin=*]
     \itemsep0em
     \item \verb|copyGlb2Shr| - Copies memory from global to shared memory in a coalesced fashion. Equivalent to the function used in assignment 2.
     \item \verb|threadScan| - Each thread scans $Q$ elements from the shared memory and writes the resulting value to the shared buffer at the index equal to the thread id.
     \item \verb|blockScan| - Performs an inclusive scan equivalent to the optimized warp scan from assignment 2.
     \item \verb|threadAdd| - Adds the correct inclusive prefix to all values in the shared memory. After this function call, all values in shared memory have values representing an inclusive scan for the block only.
-    \item \verb|lookbackScan| - The lookback scan function looks through the flag, aggregate and prefix arrays to compute the appropriate exclusive prefix to add to the respective blocks shared memory. This function is described in detail in subsection \ref{sec:impl-lookback-alg}.
+    \item \verb|look-backScan| - The look-back scan function looks through the flag, aggregate and prefix arrays to compute the appropriate exclusive prefix to add to the respective blocks shared memory. This function is described in detail in subsection \ref{sec:impl-look-back-alg}.
     \item \verb|threadAddVal| - Each thread adds the appropriate exclusive prefix to the $Q$ elements it's responsible for.
     \item \verb|copyShr2Glb| - Copies the shared memory to a location in the global array in a coalesced fashion. This is functionally equivalent to the one we used in assignment 2.
 \end{enumerate}
 
 Originally the design choice to use a separate shared memory buffer was made as it made the algorithm easier to construct in pseudo code. Furthermore, this choice makes the whole algorithm more easy to understand and explain. A potential drawback could be inefficiency in using $B*4$ extra bytes of shared memory per block, since if $B=1024$, this shared buffer would use $4*1024/49152 = 0.083\approx 8\%$ of the shared memory per block.
 
-\subsection{The Lookback Algorithm}
-\label{sec:impl-lookback-alg}
+\subsection{The look-back Algorithm}
+\label{sec:impl-look-back-alg}
 
-In accordance with section \ref{sec:background} we have implemented the lookback algorithm using 3 different arrays in global memory: A flag array, an aggregate array, and an inclusive prefix array. this section covers the lookback version where only 1 thread computes the exclusive prefix and updates its own aggregate value and inclusive prefix values. The implementation of this can be seen in listing \ref{let:seqLookbackScan}. The lines 11 to 34 are computed only for the final thread in the block.
+In accordance with section \ref{sec:background} we have implemented the look-back algorithm using 3 different arrays in global memory: A flag array, an aggregate array, and an inclusive prefix array. this section covers the look-back version where only 1 thread computes the exclusive prefix and updates its own aggregate value and inclusive prefix values. The implementation of this can be seen in listing \ref{let:seqlook-backScan}. The lines 11 to 34 are computed only for the final thread in the block.
 
 Line 11-16 covers the case in which the dynamic id is 0 - We set both the aggregate value and the prefix value equal to the final value in the shared memory for the block. It then memory fences and then sets its flag to be P.
 
@@ -170,7 +170,19 @@ Line 18-34 covers the cases where the dynamic ids are greater than 0. First the 
 
 Finally after a inter-block thread synchronization, in line 37, computed by all threads in the block, a prefix variable is created - this is the exclusive prefix value returned. It is computed by the prefix value minus the aggregate value accompanying the dynamic id.
 
-\subsection{Parallelization of the lookback algorithm}
+\subsection{Parallelization of the look-back algorithm}
+One of the optimisations that were suggested in the paper was a parallelized look-back, we decided to implement this in our implementation, the implementation can be seen in \autoref{lst:parlook-backScan}. The code works much like the normal look-back, but instead of going through each element in the arrays(being the flag/aggregate/prefix arrays), one at a time, we look at a number of these in parallel instead.\\
+The first decision was how many elements we should look at in the arrays at a time, we decided to look at 32 elements in each iteration of the look-back, 32 specifically here being the warpsize on the hardware we used, since we are doing a reduction on the values each thread read, so therefore we thought that it would be faster to ensure that this reduction is done in a single warp. For faster communication between the threads.\footnote{With our implementation there is also an argument for not wanting this number being to big, due to us always reducing through all the elements we read, since the first prefix value hopefully will be close, and we then might do a lot of unnecessary calculations.}\\
+In \autoref{lst:parlook-backScan} we can see that in line 17-31 we first handle the first block, and set the values, much like the sequential look-back.\\
+In line 34-103 we have a do-while loop, which will do the parallel look-back, the loop is to ensure that we keep looking back until we reach an element that has a P flag, so that we have a prefix value to start and not just aggregate values.\\
+In the loop in lines 39-60 we start by copying, the elements in the flag/aggregate/prefix arrays into shared memory, which is done by the threads in the first warp. We ensure that when we copy we have a useful result, meaning each thread will wait until it reads either a P or A in the flag array, before copying, in order to handle that there might be some elements with the X flag set, due to its block not haven calculated the aggregate value yet.
+Note that we ensure not to read at negative indices, and we also ensure that the element we read with the lowest index is written to index 0 in shared memory.\\
+In lines 62-67 we set the rest of the values to 0. This is done so it will not change the result. The reason for this being that the values will then be a right identity/neutral element for the operator we are reducing with. We only need it to be a right identity, since we only add these values at the end of the array.\\
+We then have a syncthreads in line 69 to ensure that all of this data has been written before we do the reduction.\\
+In line 70-93 We have a loop where the first warp does a reduction over all of the elements we have just copied to shared memory.\footnote{This reduction was inspired by the warpscan and reduction we used in assignment 2.} The operator we use is defined in lines 79-86, and basically says if the right hand side is a prefix value, then we just keep that flag and value from the right hand side, otherwise we sum up the values and keep the flag that was on the left hand side. One thing to note about this reduce is that we decided to define it such that the result is stored in the left hand sides place, and therefore the result of the whole reduction will always be stored at index 0.\\
+After the reduction, in lines 95-97 we update the shared prefix variable with the result. Before we start the loop again if we did not find a prefix value.\\
+After the loop in lines 108-112 we update the prefix array with the result we found, and in line 115 each thread returns the prefVal, which is the value of the reductions we did, which should be added to each element in the block to complete the scan, as discussed in \autoref{sec:impl-look-back-kernel} about the kernel. 
+
 
 \subsection{SPS using an auxiliary block}
 
@@ -179,20 +191,20 @@ We also implemented the method mentioned in the old slides written by professor 
 \section{Throughput for different array sizes}
 \label{sec:tp_diff_arr_sizes}
 \subsection{Experiment}
-Our first experiment focused on exploring how the throughput changed as we increased the array size. We measured throughput in terms of GB/s read/written to global memory on average over 100 runs for both GPU and CPU. For randomly initialized arrays of sizes between $2^{10}$ and $2^{30}$ we measure the performance of our implementations and some baseline computations. Our baseline computations are the \verb|cudaMemcpy|, a naive memcpy kernel, a sequential scan running on CPU, and the GPU inclusive scan algorithm from assignment 2. We measure the performance of our sequential lookback method, our modified parallel lookback method, and our implementation of single pass scan using an auxiliary block.
+Our first experiment focused on exploring how the throughput changed as we increased the array size. We measured throughput in terms of GB/s read/written to global memory on average over 100 runs for both GPU and CPU. For randomly initialized arrays of sizes between $2^{10}$ and $2^{30}$ we measure the performance of our implementations and some baseline computations. Our baseline computations are the \verb|cudaMemcpy|, a naive memcpy kernel, a sequential scan running on CPU, and the GPU inclusive scan algorithm from assignment 2. We measure the performance of our sequential look-back method, our modified parallel look-back method, and our implementation of single pass scan using an auxiliary block.
 
 For these experiments we heuristically found the combinations $Q=30,B=256$, $Q=10, B=256$, and $Q=10,B=1024$ to achieve great results for all methods when compared to other parameters. Our intuition for why these parameters work will is that they utilize have greater of the shared memory available to each block, leading to an overall faster algorithm, as we can make many more computations in shared memory.
 
-We expect to see the \verb|cudaMemcpy| and naive memcpy kernel to achieve the highest throughput, as it is the de facto high ceiling of how well our algorithm can perform. We expect the parallel lookback scan to outperform the sequential lookback scan, but that both of them would outperform the rest of the methods. We do expect the auxiliary method to fare worse than the lookback method but better than the GPU inclusive scan.
+We expect to see the \verb|cudaMemcpy| and naive memcpy kernel to achieve the highest throughput, as it is the de facto high ceiling of how well our algorithm can perform. We expect the parallel look-back scan to outperform the sequential look-back scan, but that both of them would outperform the rest of the methods. We do expect the auxiliary method to fare worse than the look-back method but better than the GPU inclusive scan.
 
 \subsection{Results}
 The results of this experiment can be seen in figures \ref{fig:plot_256_30}, \ref{fig:plot_256_10}, and \ref{fig:plot_1024_10}. From all figures we can clearly see that \verb|cudaMemcpy| and our naive memcpy implementation achieved the highest throughput in the experiments, with one instance of \verb|cudaMemcpy| for $N=21$ in figure \ref{fig:plot_256_10} having a throughput of almost 1500 GB/s, nearing the theoretical limit of 1555 GB/s on the used hardware.
 
-We see that in figures \ref{fig:plot_1024_10} and \ref{fig:plot_256_30} the parallel lookback outperforms all other scan methods tested, while in \ref{fig:plot_256_10} the baseline GPU scan outperforms both the parallel and sequential lookback scan. Our hypothesis for this is that as we lower batch size, the chunk size of the will increase accordingly for the baseline GPU scan, while for our lookback scan implementation suffers from smaller computations in shared memory, and more computations in global memory.
+We see that in figures \ref{fig:plot_1024_10} and \ref{fig:plot_256_30} the parallel look-back outperforms all other scan methods tested, while in \ref{fig:plot_256_10} the baseline GPU scan outperforms both the parallel and sequential look-back scan. Our hypothesis for this is that as we lower batch size, the chunk size of the will increase accordingly for the baseline GPU scan, while for our look-back scan implementation suffers from smaller computations in shared memory, and more computations in global memory.
 
 We also generally see that the auxiliary block version has performance similar to a sequential CPU scan. This was surprising to us as we assumed the mentioning of it in the supplementary slides indicated the solution. This very low throughput might be due to our implementation, but so far we haven't found the culprit.
 
-Finally, from this data we can also measure the performance difference between our implementations and our baseline naive memcpy, which can be found in table \ref{tab:throughput_vs_naiveMemcpy}. We see first of all that the auxiliary block method clearly underperforms. At $b=256,Q=30$ we do however achieve 71\% of the throughput of memcpy for our sequential lookback, and 84\% of the throughput for our parallel lookback.
+Finally, from this data we can also measure the performance difference between our implementations and our baseline naive memcpy, which can be found in table \ref{tab:throughput_vs_naiveMemcpy}. We see first of all that the auxiliary block method clearly underperforms. At $b=256,Q=30$ we do however achieve 71\% of the throughput of memcpy for our sequential look-back, and 84\% of the throughput for our parallel look-back.
 
 \begin{table}[h]
     \centering
@@ -201,8 +213,8 @@ Finally, from this data we can also measure the performance difference between o
          & \begin{tabular}{@{}c@{}}B=256\\Q=30\end{tabular} & \begin{tabular}{@{}c@{}}B=256\\Q=10\end{tabular} & \begin{tabular}{@{}c@{}}B=1024\\Q=10\end{tabular} \\
         \midrule
         naiveMemcpy & 1.00x & 1.00x & 1.00x \\
-        SeqLookback & 0.71x & 0.34x & 0.61x \\
-        ParLookback & 0.84x & 0.49x & 0.62x \\
+        Seqlook-back & 0.71x & 0.34x & 0.61x \\
+        Parlook-back & 0.84x & 0.49x & 0.62x \\
         AuxBlock & 0.03x & 0.01x & 0.01x \\
         \bottomrule
     \end{tabular}
@@ -239,13 +251,13 @@ Our next experiment was to decide on lists of parameter values for each of $B$, 
     \item $Q$: 32, 64, 128, 256, 512, 1024.
     \item $N$: $2^i \; \forall \; i \in [10,30]$.
 \end{itemize}
-For each pairing of these parameters we computed the throughput of what we saw to be the best performing scan method we implemented - the parallel lookback scan. After this we found the highest throughput measured, which was $1133.64$ GB/s with the parameters $B=256,N=2^30,Q=30$. Using these values we created heatmaps of the three different slices created by fixing either of the parameters and varying the two others. These figures are found in figure \ref{fig:heatmaps}.
+For each pairing of these parameters we computed the throughput of what we saw to be the best performing scan method we implemented - the parallel look-back scan. After this we found the highest throughput measured, which was $1133.64$ GB/s with the parameters $B=256,N=2^{30},Q=30$. Using these values we created heatmaps of the three different slices created by fixing either of the parameters and varying the two others. These figures are found in figure \ref{fig:heatmaps}.
 
 \subsection{Results}
 \label{sec:results}
 The heatmaps seen in figure \ref{fig:heatmaps} show that as we change each of parameters the change in throughput varies. In figure \ref{fig:heatmap-q} we see that as we increase $N$ but leave $Q$ fixed, apart form using a block size of 32 or 64 there isn't a large difference between the block sizes used. Furthermore, for lower $N$s there is little to no difference between throughput for different batch sizes.
 
-We can see a similar pattern in figure \ref{fig:heatmap-b}: For lower $N$s there is a neglegible difference in throughput regardless of $Q$. As we increase $N$, the value of $Q$ becomes more important. After an array size of $2^20$ we start seeing throughput increases with Q and reaches the max measured throughput at $Q=30$. Most significantly, for some values ($Q=16,32$) we see a collapse in performance. This is due to the fact that shared memory in a block works in an interesting way. The reason for this low performance is that we are experiencing shared memory bank conflicts caused by the fact that each thread accesses shared memory through different memory banks, and the ids for these banks are computed by dividing the memory address by 32. Thus, by setting $Q=32$, all 32 reads/writes to shared memory performed by a thread is done sequentially as they all end up using the same memory bank.
+We can see a similar pattern in figure \ref{fig:heatmap-b}: For lower $N$s there is a neglegible difference in throughput regardless of $Q$. As we increase $N$, the value of $Q$ becomes more important. After an array size of $2^{20}$ we start seeing throughput increases with Q and reaches the max measured throughput at $Q=30$. Most significantly, for some values ($Q=16,32$) we see a collapse in performance. The reason for this, comes from the interesting way that the GPU handles shared memory. We see this low performance because we are experiencing shared memory bank conflicts caused by the fact that each thread accesses shared memory through different memory banks, and the ids for these banks are computed by dividing the memory address by 32. Thus, by setting $Q=32$, all 32 reads/writes to shared memory performed by a thread is done sequentially as they all end up using the same memory bank.
 
 In figure \ref{fig:heatmap-n} we see that varying $B$ changes the throughput measured more drastically than changing $Q$. While the range in $B$-values is shorter, even when making larger steps along the $Q$-values we don't see as drastic a change. Specifically, For any $Q\geq 10$ if we change the $Q$ the throughput stays relatively fixed, while a change in block size can alter the throughput noticeably. This is likely due to the fact that by increasing the block size we are simply able to revert many more computations away from global memory and into shared memory, and due to the fact that scanning inside a block is quite efficient with our implementation.
 
@@ -271,11 +283,7 @@ In figure \ref{fig:heatmap-n} we see that varying $B$ changes the throughput mea
 \end{figure*}
 
 \section{Conclusion}
-This report covers our venture into implementing an efficient single pass scan. Utilizing shared memory and registers to handle intra-block scans, along with different methods of handling inter-block computations, we've implemented different single pass scan methods which we've experimented with. We've experimented with different block sizes, number of registers per thread, and the array size. We find that our implementations verify when compared to a basic sequential scan. We find that our implementation of parallel lookback scan achieves up to 84\% of the throughput of a naive memcpy implementation with a sequential implementation not far behind, and that our auxiliary block implementation achieves terrible results. The highest throughput we achieve is 1133.64 GB/s with a block size of 256 and a per thread register count of 30. We also find that Varying block size can be essential to the throughput of the method.
-
-\section{Future work or future improvements}
-\note{Not sure what this section should be named.}
-\note{Remember to reference the idea we mentioned earlier about not using a shared buffer for blockScan.}
+This report covers our venture into implementing an efficient single pass scan. Utilizing shared memory and registers to handle intra-block scans, along with different methods of handling inter-block computations, we've implemented different single pass scan methods which we've experimented with. We've experimented with different block sizes, number of registers per thread, and the array size. We find that our implementations verify when compared to a basic sequential scan. We find that our implementation of parallel look-back scan achieves up to 84\% of the throughput of a naive memcpy implementation with a sequential implementation not far behind, and that our auxiliary block implementation achieves terrible results. The highest throughput we achieve is 1133.64 GB/s with a block size of 256 and a per thread register count of 30. We also find that Varying block size can be essential to the throughput of the method.
 
 \onecolumn
 
@@ -288,10 +296,10 @@ This report covers our venture into implementing an efficient single pass scan. 
 
 \appendix
 
-\section{Code for the sequential lookback scan function}
-\begin{lstlisting}[caption=Lookback kernel,label=let:seqLookbackScan]
+\section{Code for the sequential look-back scan function}
+\begin{lstlisting}[caption=look-back kernel,label=let:seqlook-backScan]
 template<typename T>
-__device__ inline T lookbackScan(volatile T* agg_mem,
+__device__ inline T look-backScan(volatile T* agg_mem,
                                  volatile T* pref_mem,
                                  volatile uint32_t* flag_mem,
                                  T* shr_mem, uint32_t dyn_idx,
@@ -299,7 +307,7 @@ __device__ inline T lookbackScan(volatile T* agg_mem,
     #define X 0
     #define A 1
     #define P 2
-	// Handle lookback differently depending on dynamic id.
+	// Handle look-back differently depending on dynamic id.
     if (tid == B - 1 && dyn_idx == 0) {
 		T agg_val = shr_mem[(Q - 1) * B + tid];
 		agg_mem[dyn_idx] = agg_val;
@@ -334,10 +342,10 @@ __device__ inline T lookbackScan(volatile T* agg_mem,
 
 \newpage
 
-\section{Code for the parallel lookback function}
-\begin{lstlisting}[caption=parallel lookback function,label=lst:parLookbackScan]
+\section{Code for the parallel look-back function}
+\begin{lstlisting}[caption=parallel look-back function,label=lst:parlook-backScan]
 template<typename T>
-__device__ inline T lookbackScanWarp(volatile T* agg_mem,
+__device__ inline T look-backScanWarp(volatile T* agg_mem,
 								     volatile T* pref_mem,
 								     volatile uint32_t* flag_mem,
 								     T* shr_mem, uint32_t dyn_idx,
@@ -352,7 +360,7 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
     volatile __shared__ uint32_t shrFlag[WARP];
     volatile __shared__ int32_t shrVal[WARP];
     volatile __shared__ int32_t prefVal; // set to the result of the reduce
-	// Handle lookback differently depending on dynamic id.
+	// Handle look-back differently depending on dynamic id.
     // If block 0 just set the prefix value to be the aggregated result.
     if (tid == B - 1 && dyn_idx == 0) {
 		pref_mem[dyn_idx] = agg_val;
@@ -456,9 +464,9 @@ __device__ inline T lookbackScanWarp(volatile T* agg_mem,
 
 \newpage
 
-\section{Code for the lookback scan kernel}
+\section{Code for the look-back scan kernel}
 
-\begin{lstlisting}[caption=Lookback kernel,label=lst:lookbackKernel]
+\begin{lstlisting}[caption=look-back kernel,label=lst:look-backKernel]
 template <typename T>
 __global__ void SinglePassScanKernel2(T* d_in, T* d_out,
                                       const size_t N, int32_t* IDAddr,
@@ -488,12 +496,12 @@ __global__ void SinglePassScanKernel2(T* d_in, T* d_out,
     // Save the result in shrmem.
     threadAdd<T>(blockShrMem, blockShrBuf, tid);
 
-    // Step 4 use lookback scan to find the inclusive prefix value
+    // Step 4 use look-back scan to find the inclusive prefix value
 	T prefix = T();
 	if (!par_redux) {
-		prefix = lookbackScan<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
+		prefix = look-backScan<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
 	} else {
-		prefix = lookbackScanWarp<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
+		prefix = look-backScanWarp<T>(aggrArr, prefixArr, flagArr, blockShrMem, dynID, tid);
 	}
 
     // Step 5 Sum the prefix into the scan
