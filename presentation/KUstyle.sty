@@ -1,0 +1,51 @@
+\ProvidesPackage{KUstyle}
+
+\RequirePackage[ddmmyyyy]{datetime}
+\RequirePackage{fontspec}
+\RequirePackage{etoolbox}
+\RequirePackage[absolute,overlay]{textpos}
+\RequirePackage{hyperref}
+\RequirePackage{microtype}
+
+\newcommand*{\toplinje}[1]{\def\@toplinje{#1}}
+
+\renewcommand{\dateseparator}{--}
+\setmainfont{Arial}
+\definecolor{KUrod}{RGB}{144,26,30}
+\setbeamercolor{titlelike}{fg=KUrod}
+\setbeamersize{text margin left=0.75cm, text margin right=0.75cm} 
+\setbeamertemplate{frametitle}{
+    \vspace{0.9cm}
+    \insertframetitle
+}
+\setbeamertemplate{footline}{}
+\setbeamertemplate{navigation symbols}{}
+\setbeamercolor*{item}{}
+\setbeamertemplate{itemize items}[circle]
+\setbeamercolor{hvidbox}{fg=black,bg=white}
+
+\makeatletter
+\define@key{beamerframe}{hoved}[true] {
+    \setbeamertemplate{headline}{
+        \begin{textblock}{10}(0.6,0.3)
+                \vspace{-0.1cm}
+                \includegraphics[height=9pt]{KU/KU-logo.png}
+        \end{textblock}
+        \begin{textblock}{10}(1,0.3)
+                \fontsize{5}{5}\fontfamily{ptm}\selectfont \textls[200]{UNIVERSITY OF COPENHAGEN}
+        \end{textblock}
+        \ifdefined\@toplinje
+        \begin{textblock}{10}(3.6,0.3)
+            \begin{flushright}
+                \vspace{-0.33cm}
+                \tiny\textcolor{black}{\@toplinje\ \ \ \ \ }
+            \end{flushright}
+        \end{textblock}
+        \fi
+        \includegraphics[width=\paperwidth,height=14pt]{KU/hoved.png}
+        \begin{textblock}{10}(13.6,0.3)
+            \tiny\textcolor{black}{\today\ \ \ \ \ \insertframenumber}
+        \end{textblock}
+    }
+}
+\makeatother
